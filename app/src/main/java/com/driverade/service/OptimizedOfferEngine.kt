@@ -15,7 +15,7 @@ class OptimizedOfferEngine(
         val metrics = findAndParseOffer(rootNode) ?: return null
 
         if (metrics.fare == lastCachedFare && metrics.hourlyRate == lastCachedRate) {
-            return null 
+            return null
         }
 
         lastCachedFare = metrics.fare
@@ -29,12 +29,12 @@ class OptimizedOfferEngine(
             val desc = current.contentDescription?.toString() ?: ""
 
             if ((text.contains("$") || desc.contains("$")) &&
-                (text.contains("min") || text.contains("mi") || text.contains("/hr"))) {
-                
+                (text.contains("min") || text.contains("mi") || text.contains("/hr"))
+            ) {
                 val metrics = Metrics()
                 parseMetrics(current, metrics)
                 if (metrics.fare > 0.0 || metrics.hourlyRate > 0.0) {
-                    return metrics 
+                    return metrics
                 }
             }
 
@@ -57,10 +57,10 @@ class OptimizedOfferEngine(
         fun extract(current: AccessibilityNodeInfo) {
             val text = current.text?.toString() ?: current.contentDescription?.toString() ?: ""
             if (text.contains("$") && metrics.fare == 0.0) {
-                text.replace("$", "").trim().toDoubleOrNull()?.let { metrics.fare = it }
+                text.replace(Regex("[^0-9.]"), "").toDoubleOrNull()?.let { metrics.fare = it }
             }
             if (text.contains("/hr", ignoreCase = true)) {
-                text.replace(Regex("[^\d.]"), "").toDoubleOrNull()?.let { metrics.hourlyRate = it }
+                text.replace(Regex("[^0-9.]"), "").toDoubleOrNull()?.let { metrics.hourlyRate = it }
             }
             for (i in 0 until current.childCount) {
                 current.getChild(i)?.let { child ->

@@ -3,13 +3,17 @@ package com.driverade.service
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.view.accessibility.AccessibilityEvent
-import android.view.accessibility.AccessibilityNodeInfo
 
 class LoggerService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (DriveradeState.currentMode == DriveradeState.OperatingMode.OFF) return
         val root = rootInActiveWindow ?: return
         try {
-            // Process nodes safely
+            val engine = OptimizedOfferEngine(
+                DriveradeState.targetRateSetting,
+                DriveradeState.minPayoutSetting
+            )
+            engine.evaluateNode(root)
         } finally {
             root.recycle()
         }
