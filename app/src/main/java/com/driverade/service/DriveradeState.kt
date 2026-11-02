@@ -15,9 +15,14 @@ object DriveradeState {
     var minPayoutSetting: Double = 10.0
 
     var onStateChanged: ((OperatingMode) -> Unit)? = null
+    var onStatsUpdated: (() -> Unit)? = null
 
     fun setMode(mode: OperatingMode) {
         currentMode = mode
         onStateChanged?.invoke(mode)
+    }
+
+    fun notifyStatsChanged() {
+        onStatsUpdated?.invoke()
     }
 }

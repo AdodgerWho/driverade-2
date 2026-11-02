@@ -65,19 +65,23 @@
 
         </LinearLayout>
 
-        <!-- Earnings & Active Time Telemetry Cards -->
+        <!-- Dynamic Earnings & Active Time Telemetry Cards -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:layout_marginBottom="18dp">
 
-            <!-- Today's Net Earnings Card -->
+            <!-- Today's Net Earnings Card (Interactive) -->
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardEarnings"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:layout_marginEnd="8dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:foreground="?attr/selectableItemBackground"
                 app:cardBackgroundColor="#151C28"
                 app:cardElevation="4dp"
                 app:cardCornerRadius="18dp"
@@ -111,9 +115,10 @@
                         </FrameLayout>
 
                         <TextView
+                            android:id="@+id/tvEarningsBadge"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="+14%"
+                            android:text="Tap to edit"
                             android:textColor="#2ECC71"
                             android:textSize="11sp"
                             android:textStyle="bold"
@@ -121,9 +126,10 @@
                     </LinearLayout>
 
                     <TextView
+                        android:id="@+id/tvNetEarnings"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="$187.40"
+                        android:text="$0.00"
                         android:textColor="#F8FAFC"
                         android:textSize="26sp"
                         android:textStyle="bold"/>
@@ -139,12 +145,16 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Active Shift Hours Card -->
+            <!-- Active Shift Hours Card (Interactive) -->
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardActiveTime"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:layout_marginStart="8dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:foreground="?attr/selectableItemBackground"
                 app:cardBackgroundColor="#151C28"
                 app:cardElevation="4dp"
                 app:cardCornerRadius="18dp"
@@ -178,9 +188,10 @@
                         </FrameLayout>
 
                         <TextView
+                            android:id="@+id/tvOffersCountBadge"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="12 Offers"
+                            android:text="0 Offers"
                             android:textColor="#4FC3F7"
                             android:textSize="11sp"
                             android:textStyle="bold"
@@ -188,9 +199,10 @@
                     </LinearLayout>
 
                     <TextView
+                        android:id="@+id/tvActiveHours"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="8.0 hrs"
+                        android:text="0.0 hrs"
                         android:textColor="#F8FAFC"
                         android:textSize="26sp"
                         android:textStyle="bold"/>
