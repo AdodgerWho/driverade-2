@@ -1,6 +1,6 @@
 package com.driverade.service
 
-import android.accessibilityservice.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityNodeInfo
 import android.graphics.Rect
 
 class OptimizedOfferEngine(
@@ -39,7 +39,6 @@ class OptimizedOfferEngine(
             if (text.contains("$") && text.any { it.isDigit() }) {
                 val rect = Rect()
                 current.getBoundsInScreen(rect)
-                // Top-middle map pill bounds (verified via screenshots for Uber & Hich Driver maps)
                 if (rect.top >= 0 && rect.top <= 240 && rect.width() > 0 && rect.height() > 0) {
                     val cleaned = text.replace(Regex("[^0-9.]"), "")
                     cleaned.toDoubleOrNull()?.let {
@@ -51,13 +50,16 @@ class OptimizedOfferEngine(
             }
             for (i in 0 until current.childCount) {
                 current.getChild(i)?.let { child ->
-                    try { parseTopMiddle(child) } finally { child.recycle() }
+                    try { 
+                        parseTopMiddle(child) 
+                    } finally { 
+                        child.recycle() 
+                    }
                 }
             }
         }
         parseTopMiddle(node)
 
-        // If top-middle pill is found, it serves as the authoritative final total check
         if (topMiddleFare >= 0.0) {
             return Metrics(fare = topMiddleFare, hourlyRate = 0.0, isAuthoritativeMapTotal = true)
         }
@@ -105,12 +107,9 @@ class OptimizedOfferEngine(
                 current.getChild(i)?.let { child ->
                     try {
                         extract(child)
-                    } while (false) {
+                    } finally {
                         child.recycle()
                     }
-                    try {
-                        child.recycle()
-                    } catch (e: Exception) {}
                 }
             }
         }
