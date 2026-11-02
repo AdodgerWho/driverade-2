@@ -1,7 +1,9 @@
 <resources>
     <style name="Theme.Driverade" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">#4CAF50</item>
-        <item name="colorSecondary">#81C784</item>
-        <item name="android:windowBackground">#12161F</item>
+        <item name="colorPrimary">#2ECC71</item>
+        <item name="colorSecondary">#4FC3F7</item>
+        <item name="android:windowBackground">#0B0F17</item>
+        <item name="android:statusBarColor">#0B0F17</item>
+        <item name="android:navigationBarColor">#0B0F17</item>
     </style>
 </resources>

@@ -1,10 +1,11 @@
 package com.driverade.ui
 
 import android.content.Intent
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.provider.Settings
 import android.text.InputType
-import android.widget.Button
+import android.view.View
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.SeekBar
@@ -29,6 +30,26 @@ class MainActivity : AppCompatActivity() {
         val switchLogger = findViewById<SwitchMaterial>(R.id.switchLogger)
         val switchAlert = findViewById<SwitchMaterial>(R.id.switchAlert)
         val tvStatusIndicator = findViewById<TextView>(R.id.tvStatusIndicator)
+        val tvTargetSub = findViewById<TextView>(R.id.tvTargetSub)
+        val tvTimingSub = findViewById<TextView>(R.id.tvTimingSub)
+
+        fun refreshSubtitles() {
+            tvTargetSub?.text = "Min $${DriveradeState.targetRateSetting}/hr  •  $${DriveradeState.minPayoutSetting} floor"
+            tvTimingSub?.text = "Debounce ${prefs.customDebounceMs}ms  •  Poll ${prefs.customPollingMs}ms"
+        }
+
+        fun styleStatusBadge(text: String, textColor: Int, bgColor: Int, strokeColor: Int) {
+            if (tvStatusIndicator == null) return
+            tvStatusIndicator.text = text
+            tvStatusIndicator.setTextColor(textColor)
+            val gd = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 100f
+                setColor(bgColor)
+                setStroke(2, strokeColor)
+            }
+            tvStatusIndicator.background = gd
+        }
 
         fun updateUIState() {
             val mode = DriveradeState.currentMode
@@ -38,26 +59,21 @@ class MainActivity : AppCompatActivity() {
             switchLogger?.isChecked = isLoggerActive
             switchAlert?.isChecked = isAlertActive
 
-            if (tvStatusIndicator != null) {
-                when (mode) {
-                    DriveradeState.OperatingMode.OFF -> {
-                        tvStatusIndicator.text = "● STANDBY"
-                        tvStatusIndicator.setTextColor(0xFFE5484D.toInt())
-                    }
-                    DriveradeState.OperatingMode.LOGGER_ONLY -> {
-                        tvStatusIndicator.text = "● LOGGER ACTIVE"
-                        tvStatusIndicator.setTextColor(0xFF4FC3F7.toInt())
-                    }
-                    DriveradeState.OperatingMode.ALERT_ONLY -> {
-                        tvStatusIndicator.text = "● ALERT ARMED"
-                        tvStatusIndicator.setTextColor(0xFFF5A524.toInt())
-                    }
-                    DriveradeState.OperatingMode.ALERT_AND_LOGGER -> {
-                        tvStatusIndicator.text = "● ACTIVE & ARMED"
-                        tvStatusIndicator.setTextColor(0xFF2ECC71.toInt())
-                    }
+            when (mode) {
+                DriveradeState.OperatingMode.OFF -> {
+                    styleStatusBadge("● STANDBY", 0xFFE5484D.toInt(), 0x22E5484D, 0x55E5484D)
+                }
+                DriveradeState.OperatingMode.LOGGER_ONLY -> {
+                    styleStatusBadge("● LOGGER ACTIVE", 0xFF4FC3F7.toInt(), 0x224FC3F7, 0x554FC3F7)
+                }
+                DriveradeState.OperatingMode.ALERT_ONLY -> {
+                    styleStatusBadge("● ALERT ARMED", 0xFFF5A524.toInt(), 0x22F5A524, 0x55F5A524)
+                }
+                DriveradeState.OperatingMode.ALERT_AND_LOGGER -> {
+                    styleStatusBadge("● ACTIVE & ARMED", 0xFF2ECC71.toInt(), 0x222ECC71, 0x552ECC71)
                 }
             }
+            refreshSubtitles()
         }
 
         switchLogger?.setOnCheckedChangeListener { _, isChecked ->
@@ -86,23 +102,23 @@ class MainActivity : AppCompatActivity() {
 
         updateUIState()
 
-        findViewById<Button>(R.id.btnThresholds)?.setOnClickListener {
-            showThresholdsDialog()
+        findViewById<View>(R.id.btnThresholds)?.setOnClickListener {
+            showThresholdsDialog { refreshSubtitles() }
         }
 
-        findViewById<Button>(R.id.btnAdvancedSettings)?.setOnClickListener {
-            showAdvancedTimingsDialog()
+        findViewById<View>(R.id.btnAdvancedSettings)?.setOnClickListener {
+            showAdvancedTimingsDialog { refreshSubtitles() }
         }
 
-        findViewById<Button>(R.id.btnLoggerView)?.setOnClickListener {
+        findViewById<View>(R.id.btnLoggerView)?.setOnClickListener {
             showDiagnosticsDialog()
         }
     }
 
-    private fun showThresholdsDialog() {
+    private fun showThresholdsDialog(onSaved: () -> Unit) {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(48, 32, 48, 16)
+            setPadding(56, 36, 56, 16)
         }
 
         val rateInput = EditText(this).apply {
@@ -130,16 +146,17 @@ class MainActivity : AppCompatActivity() {
                     rateInput.text.toString().toDoubleOrNull() ?: DriveradeState.targetRateSetting
                 DriveradeState.minPayoutSetting =
                     payoutInput.text.toString().toDoubleOrNull() ?: DriveradeState.minPayoutSetting
+                onSaved()
                 Toast.makeText(this, "Thresholds saved", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Cancel", null)
             .show()
     }
 
-    private fun showAdvancedTimingsDialog() {
+    private fun showAdvancedTimingsDialog(onSaved: () -> Unit) {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(48, 32, 48, 16)
+            setPadding(56, 36, 56, 16)
         }
 
         val debounceInput = EditText(this).apply {
@@ -191,6 +208,7 @@ class MainActivity : AppCompatActivity() {
                     debounceInput.text.toString().toLongOrNull() ?: DriverPreferences.DEFAULT_DEBOUNCE_MS
                 prefs.customPollingMs =
                     pollingInput.text.toString().toLongOrNull() ?: DriverPreferences.DEFAULT_TIMED_MS
+                onSaved()
                 Toast.makeText(this, "Timings updated", Toast.LENGTH_SHORT).show()
             }
             .setNeutralButton("Accessibility Settings") { _, _ ->

@@ -3,8 +3,11 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#12161F"
-    android:padding="16dp"
+    android:background="#0B0F17"
+    android:paddingHorizontal="18dp"
+    android:paddingTop="20dp"
+    android:paddingBottom="28dp"
+    android:clipToPadding="false"
     android:fillViewport="true">
 
     <LinearLayout
@@ -12,138 +15,191 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <!-- Top Header Card with Status Indicator -->
-        <com.google.android.material.card.MaterialCardView
+        <!-- Hero Gradient Banner Header -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            app:cardBackgroundColor="#1A212E"
-            app:cardElevation="4dp"
-            app:cardCornerRadius="16dp"
-            app:strokeColor="#2A3447"
-            app:strokeWidth="1dp">
+            android:background="@drawable/bg_header_gradient"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:padding="22dp"
+            android:layout_marginBottom="18dp"
+            android:elevation="6dp">
 
             <LinearLayout
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:padding="20dp">
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Driverade"
-                        android:textColor="#FFFFFF"
-                        android:textSize="22sp"
-                        android:textStyle="bold"/>
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Control Panel"
-                        android:textColor="#8A94A3"
-                        android:textSize="14sp"
-                        android:layout_marginTop="2dp"/>
-
-                </LinearLayout>
+                android:layout_weight="1"
+                android:orientation="vertical">
 
                 <TextView
-                    android:id="@+id/tvStatusIndicator"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="● STANDBY"
-                    android:textColor="#E5484D"
-                    android:textSize="13sp"
+                    android:text="DRIVERADE"
+                    android:textColor="#FFFFFF"
+                    android:textSize="22sp"
                     android:textStyle="bold"
-                    android:background="#26E5484D"
-                    android:paddingHorizontal="12dp"
-                    android:paddingVertical="6dp"/>
+                    android:letterSpacing="0.06"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Smart Offer &amp; Telemetry Suite"
+                    android:textColor="#94A3B8"
+                    android:textSize="13sp"
+                    android:layout_marginTop="4dp"/>
 
             </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
 
-        <!-- Earnings & Active Time Summary Row -->
+            <TextView
+                android:id="@+id/tvStatusIndicator"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="● STANDBY"
+                android:textColor="#E5484D"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:background="@drawable/bg_status_pill"
+                android:paddingHorizontal="14dp"
+                android:paddingVertical="8dp"/>
+
+        </LinearLayout>
+
+        <!-- Earnings & Active Time Telemetry Cards -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginBottom="16dp">
+            android:layout_marginBottom="18dp">
 
-            <!-- Today's Net Earnings -->
+            <!-- Today's Net Earnings Card -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:layout_marginEnd="8dp"
-                app:cardBackgroundColor="#1A212E"
-                app:cardElevation="3dp"
-                app:cardCornerRadius="14dp"
-                app:strokeColor="#2A3447"
+                app:cardBackgroundColor="#151C28"
+                app:cardElevation="4dp"
+                app:cardCornerRadius="18dp"
+                app:strokeColor="#263145"
                 app:strokeWidth="1dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="16dp">
+                    android:padding="18dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="12dp">
+
+                        <FrameLayout
+                            android:layout_width="38dp"
+                            android:layout_height="38dp"
+                            android:background="@drawable/bg_icon_circle_green">
+
+                            <ImageView
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:layout_gravity="center"
+                                android:src="@drawable/ic_wallet"
+                                android:contentDescription="Earnings"/>
+                        </FrameLayout>
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="+14%"
+                            android:textColor="#2ECC71"
+                            android:textSize="11sp"
+                            android:textStyle="bold"
+                            android:layout_marginStart="10dp"/>
+                    </LinearLayout>
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="$187.40"
-                        android:textColor="#4CAF50"
-                        android:textSize="22sp"
+                        android:textColor="#F8FAFC"
+                        android:textSize="26sp"
                         android:textStyle="bold"/>
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Today's Net"
-                        android:textColor="#8A94A3"
+                        android:text="Today's Net Earnings"
+                        android:textColor="#94A3B8"
                         android:textSize="12sp"
                         android:layout_marginTop="2dp"/>
 
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Active Time -->
+            <!-- Active Shift Hours Card -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:layout_marginStart="8dp"
-                app:cardBackgroundColor="#1A212E"
-                app:cardElevation="3dp"
-                app:cardCornerRadius="14dp"
-                app:strokeColor="#2A3447"
+                app:cardBackgroundColor="#151C28"
+                app:cardElevation="4dp"
+                app:cardCornerRadius="18dp"
+                app:strokeColor="#263145"
                 app:strokeWidth="1dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="16dp">
+                    android:padding="18dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="12dp">
+
+                        <FrameLayout
+                            android:layout_width="38dp"
+                            android:layout_height="38dp"
+                            android:background="@drawable/bg_icon_circle_blue">
+
+                            <ImageView
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:layout_gravity="center"
+                                android:src="@drawable/ic_clock"
+                                android:contentDescription="Active Time"/>
+                        </FrameLayout>
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="12 Offers"
+                            android:textColor="#4FC3F7"
+                            android:textSize="11sp"
+                            android:textStyle="bold"
+                            android:layout_marginStart="10dp"/>
+                    </LinearLayout>
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="8 hrs"
-                        android:textColor="#FFFFFF"
-                        android:textSize="22sp"
+                        android:text="8.0 hrs"
+                        android:textColor="#F8FAFC"
+                        android:textSize="26sp"
                         android:textStyle="bold"/>
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Active Time"
-                        android:textColor="#8A94A3"
+                        android:text="Active Shift Time"
+                        android:textColor="#94A3B8"
                         android:textSize="12sp"
                         android:layout_marginTop="2dp"/>
 
@@ -152,15 +208,15 @@
 
         </LinearLayout>
 
-        <!-- Combined Master Operation Panel -->
+        <!-- Unified Master Operation Panel -->
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            app:cardBackgroundColor="#1A212E"
-            app:cardElevation="4dp"
-            app:cardCornerRadius="16dp"
-            app:strokeColor="#2A3447"
+            android:layout_marginBottom="22dp"
+            app:cardBackgroundColor="#151C28"
+            app:cardElevation="6dp"
+            app:cardCornerRadius="20dp"
+            app:strokeColor="#263145"
             app:strokeWidth="1dp">
 
             <LinearLayout
@@ -172,10 +228,11 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Operation &amp; Logging Modes"
-                    android:textColor="#FFFFFF"
-                    android:textSize="16sp"
+                    android:text="ACTIVE ENGINES"
+                    android:textColor="#64748B"
+                    android:textSize="11sp"
                     android:textStyle="bold"
+                    android:letterSpacing="0.1"
                     android:layout_marginBottom="16dp"/>
 
                 <!-- Logger Service Toggle Row -->
@@ -186,6 +243,20 @@
                     android:gravity="center_vertical"
                     android:layout_marginBottom="16dp">
 
+                    <FrameLayout
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
+                        android:background="@drawable/bg_icon_circle_blue"
+                        android:layout_marginEnd="14dp">
+
+                        <ImageView
+                            android:layout_width="22dp"
+                            android:layout_height="22dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_radar"
+                            android:contentDescription="Logger Service"/>
+                    </FrameLayout>
+
                     <LinearLayout
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
@@ -195,16 +266,16 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Logger Service"
-                            android:textColor="#FFFFFF"
-                            android:textSize="15sp"
+                            android:text="Telemetry Logger"
+                            android:textColor="#F8FAFC"
+                            android:textSize="16sp"
                             android:textStyle="bold"/>
 
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Record offers and capture accessibility tree"
-                            android:textColor="#8A94A3"
+                            android:text="Capture incoming trip cards &amp; metrics"
+                            android:textColor="#94A3B8"
                             android:textSize="12sp"
                             android:layout_marginTop="2dp"/>
 
@@ -214,23 +285,37 @@
                         android:id="@+id/switchLogger"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        app:thumbTint="#4CAF50"
-                        app:trackTint="#2A3447"/>
+                        app:thumbTint="#4FC3F7"
+                        app:trackTint="#263145"/>
 
                 </LinearLayout>
 
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
-                    android:background="#2A3447"
+                    android:background="#1E293B"
                     android:layout_marginBottom="16dp"/>
 
-                <!-- Alert & Auto Mode Toggle Row -->
+                <!-- Screen Pulse Alerts Toggle Row -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
                     android:gravity="center_vertical">
+
+                    <FrameLayout
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
+                        android:background="@drawable/bg_icon_circle_green"
+                        android:layout_marginEnd="14dp">
+
+                        <ImageView
+                            android:layout_width="22dp"
+                            android:layout_height="22dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_bolt"
+                            android:contentDescription="Screen Pulse Alerts"/>
+                    </FrameLayout>
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -241,16 +326,16 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Screen Pulse Alerts"
-                            android:textColor="#FFFFFF"
-                            android:textSize="15sp"
+                            android:text="Instant Offer Alerts"
+                            android:textColor="#F8FAFC"
+                            android:textSize="16sp"
                             android:textStyle="bold"/>
 
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Pulse screen and alert when good offers arrive"
-                            android:textColor="#8A94A3"
+                            android:text="Flash overlay when $/hr target is met"
+                            android:textColor="#94A3B8"
                             android:textSize="12sp"
                             android:layout_marginTop="2dp"/>
 
@@ -260,66 +345,234 @@
                         android:id="@+id/switchAlert"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        app:thumbTint="#4CAF50"
-                        app:trackTint="#2A3447"/>
+                        app:thumbTint="#2ECC71"
+                        app:trackTint="#263145"/>
 
                 </LinearLayout>
 
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- Control & Diagnostics Section -->
+        <!-- Configuration & Diagnostics Section Header -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Control &amp; Diagnostics"
-            android:textSize="13sp"
+            android:text="CONFIGURATION &amp; DIAGNOSTICS"
+            android:textSize="11sp"
             android:textStyle="bold"
-            android:textColor="#8A94A3"
-            android:layout_marginBottom="10dp"
+            android:letterSpacing="0.1"
+            android:textColor="#64748B"
+            android:layout_marginBottom="12dp"
             android:layout_marginStart="4dp"/>
 
-        <com.google.android.material.button.MaterialButton
+        <!-- Action Card 1: Thresholds & Targets -->
+        <com.google.android.material.card.MaterialCardView
             android:id="@+id/btnThresholds"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="THRESHOLDS &amp; TARGETS"
-            android:textColor="#4CAF50"
-            android:textAlignment="textStart"
-            android:padding="14dp"
             android:layout_marginBottom="10dp"
-            app:strokeColor="#2A3447"
-            app:cornerRadius="10dp"
-            app:backgroundTint="#1A212E"/>
+            android:clickable="true"
+            android:focusable="true"
+            android:foreground="?attr/selectableItemBackground"
+            app:cardBackgroundColor="#151C28"
+            app:cardElevation="2dp"
+            app:cardCornerRadius="16dp"
+            app:strokeColor="#263145"
+            app:strokeWidth="1dp">
 
-        <com.google.android.material.button.MaterialButton
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:padding="16dp">
+
+                <FrameLayout
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/bg_icon_circle_green"
+                    android:layout_marginEnd="14dp">
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ic_sliders"
+                        android:contentDescription="Thresholds"/>
+                </FrameLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Thresholds &amp; Targets"
+                        android:textColor="#F8FAFC"
+                        android:textSize="15sp"
+                        android:textStyle="bold"/>
+
+                    <TextView
+                        android:id="@+id/tvTargetSub"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Min $25.0/hr  •  $10.0 floor"
+                        android:textColor="#94A3B8"
+                        android:textSize="12sp"
+                        android:layout_marginTop="2dp"/>
+
+                </LinearLayout>
+
+                <ImageView
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:src="@drawable/ic_chevron_right"
+                    android:contentDescription="Open"/>
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Action Card 2: Advanced Timings & OCR -->
+        <com.google.android.material.card.MaterialCardView
             android:id="@+id/btnAdvancedSettings"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="ADVANCED TIMINGS &amp; OCR"
-            android:textColor="#4CAF50"
-            android:textAlignment="textStart"
-            android:padding="14dp"
             android:layout_marginBottom="10dp"
-            app:strokeColor="#2A3447"
-            app:cornerRadius="10dp"
-            app:backgroundTint="#1A212E"/>
+            android:clickable="true"
+            android:focusable="true"
+            android:foreground="?attr/selectableItemBackground"
+            app:cardBackgroundColor="#151C28"
+            app:cardElevation="2dp"
+            app:cardCornerRadius="16dp"
+            app:strokeColor="#263145"
+            app:strokeWidth="1dp">
 
-        <com.google.android.material.button.MaterialButton
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:padding="16dp">
+
+                <FrameLayout
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/bg_icon_circle_amber"
+                    android:layout_marginEnd="14dp">
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ic_speed"
+                        android:contentDescription="Timings"/>
+                </FrameLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Advanced Timings &amp; OCR"
+                        android:textColor="#F8FAFC"
+                        android:textSize="15sp"
+                        android:textStyle="bold"/>
+
+                    <TextView
+                        android:id="@+id/tvTimingSub"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Debounce 350ms  •  Poll 1200ms"
+                        android:textColor="#94A3B8"
+                        android:textSize="12sp"
+                        android:layout_marginTop="2dp"/>
+
+                </LinearLayout>
+
+                <ImageView
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:src="@drawable/ic_chevron_right"
+                    android:contentDescription="Open"/>
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Action Card 3: Logger Diagnostics -->
+        <com.google.android.material.card.MaterialCardView
             android:id="@+id/btnLoggerView"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="LOGGER DIAGNOSTICS"
-            android:textColor="#4CAF50"
-            android:textAlignment="textStart"
-            android:padding="14dp"
-            android:layout_marginBottom="24dp"
-            app:strokeColor="#2A3447"
-            app:cornerRadius="10dp"
-            app:backgroundTint="#1A212E"/>
+            android:layout_marginBottom="16dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:foreground="?attr/selectableItemBackground"
+            app:cardBackgroundColor="#151C28"
+            app:cardElevation="2dp"
+            app:cardCornerRadius="16dp"
+            app:strokeColor="#263145"
+            app:strokeWidth="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:padding="16dp">
+
+                <FrameLayout
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/bg_icon_circle_purple"
+                    android:layout_marginEnd="14dp">
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ic_terminal"
+                        android:contentDescription="Diagnostics"/>
+                </FrameLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="System &amp; Logger Diagnostics"
+                        android:textColor="#F8FAFC"
+                        android:textSize="15sp"
+                        android:textStyle="bold"/>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Accessibility service status &amp; live config"
+                        android:textColor="#94A3B8"
+                        android:textSize="12sp"
+                        android:layout_marginTop="2dp"/>
+
+                </LinearLayout>
+
+                <ImageView
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:src="@drawable/ic_chevron_right"
+                    android:contentDescription="Open"/>
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
 
     </LinearLayout>
 </ScrollView>
