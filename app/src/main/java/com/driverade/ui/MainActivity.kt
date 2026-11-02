@@ -7,7 +7,6 @@ import android.text.InputType
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.RadioGroup
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
@@ -16,6 +15,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.driverade.R
 import com.driverade.data.DriverPreferences
 import com.driverade.service.DriveradeState
+import com.google.android.material.switchmaterial.SwitchMaterial
 
 class MainActivity : AppCompatActivity() {
 
@@ -26,23 +26,65 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.fragment_dashboard)
         prefs = DriverPreferences(this)
 
-        val rgMode = findViewById<RadioGroup>(R.id.rgOperatingMode)
-        when (DriveradeState.currentMode) {
-            DriveradeState.OperatingMode.OFF -> rgMode.check(R.id.rbModeOff)
-            DriveradeState.OperatingMode.LOGGER_ONLY -> rgMode.check(R.id.rbModeLoggerOnly)
-            DriveradeState.OperatingMode.ALERT_ONLY -> rgMode.check(R.id.rbModeAlertOnly)
-            DriveradeState.OperatingMode.ALERT_AND_LOGGER -> rgMode.check(R.id.rbModeAlertLogger)
+        val switchLogger = findViewById<SwitchMaterial>(R.id.switchLogger)
+        val switchAlert = findViewById<SwitchMaterial>(R.id.switchAlert)
+        val tvStatusIndicator = findViewById<TextView>(R.id.tvStatusIndicator)
+
+        fun updateUIState() {
+            val mode = DriveradeState.currentMode
+            val isLoggerActive = mode == DriveradeState.OperatingMode.LOGGER_ONLY || mode == DriveradeState.OperatingMode.ALERT_AND_LOGGER
+            val isAlertActive = mode == DriveradeState.OperatingMode.ALERT_ONLY || mode == DriveradeState.OperatingMode.ALERT_AND_LOGGER
+
+            switchLogger?.isChecked = isLoggerActive
+            switchAlert?.isChecked = isAlertActive
+
+            if (tvStatusIndicator != null) {
+                when (mode) {
+                    DriveradeState.OperatingMode.OFF -> {
+                        tvStatusIndicator.text = "● STANDBY"
+                        tvStatusIndicator.setTextColor(0xFFE5484D.toInt())
+                    }
+                    DriveradeState.OperatingMode.LOGGER_ONLY -> {
+                        tvStatusIndicator.text = "● LOGGER ACTIVE"
+                        tvStatusIndicator.setTextColor(0xFF4FC3F7.toInt())
+                    }
+                    DriveradeState.OperatingMode.ALERT_ONLY -> {
+                        tvStatusIndicator.text = "● ALERT ARMED"
+                        tvStatusIndicator.setTextColor(0xFFF5A524.toInt())
+                    }
+                    DriveradeState.OperatingMode.ALERT_AND_LOGGER -> {
+                        tvStatusIndicator.text = "● ACTIVE & ARMED"
+                        tvStatusIndicator.setTextColor(0xFF2ECC71.toInt())
+                    }
+                }
+            }
         }
 
-        rgMode.setOnCheckedChangeListener { _, checkedId ->
-            val mode = when (checkedId) {
-                R.id.rbModeLoggerOnly -> DriveradeState.OperatingMode.LOGGER_ONLY
-                R.id.rbModeAlertOnly -> DriveradeState.OperatingMode.ALERT_ONLY
-                R.id.rbModeAlertLogger -> DriveradeState.OperatingMode.ALERT_AND_LOGGER
+        switchLogger?.setOnCheckedChangeListener { _, isChecked ->
+            val alertActive = DriveradeState.currentMode == DriveradeState.OperatingMode.ALERT_ONLY || DriveradeState.currentMode == DriveradeState.OperatingMode.ALERT_AND_LOGGER
+            val newMode = when {
+                isChecked && alertActive -> DriveradeState.OperatingMode.ALERT_AND_LOGGER
+                isChecked -> DriveradeState.OperatingMode.LOGGER_ONLY
+                alertActive -> DriveradeState.OperatingMode.ALERT_ONLY
                 else -> DriveradeState.OperatingMode.OFF
             }
-            DriveradeState.setMode(mode)
+            DriveradeState.setMode(newMode)
+            updateUIState()
         }
+
+        switchAlert?.setOnCheckedChangeListener { _, isChecked ->
+            val loggerActive = DriveradeState.currentMode == DriveradeState.OperatingMode.LOGGER_ONLY || DriveradeState.currentMode == DriveradeState.OperatingMode.ALERT_AND_LOGGER
+            val newMode = when {
+                isChecked && loggerActive -> DriveradeState.OperatingMode.ALERT_AND_LOGGER
+                isChecked -> DriveradeState.OperatingMode.ALERT_ONLY
+                loggerActive -> DriveradeState.OperatingMode.LOGGER_ONLY
+                else -> DriveradeState.OperatingMode.OFF
+            }
+            DriveradeState.setMode(newMode)
+            updateUIState()
+        }
+
+        updateUIState()
 
         findViewById<Button>(R.id.btnThresholds)?.setOnClickListener {
             showThresholdsDialog()
