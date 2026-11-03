@@ -1,7 +1,6 @@
 package com.driverade.ui
 
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.text.InputType
@@ -15,7 +14,6 @@ import androidx.core.content.FileProvider
 import com.driverade.R
 import com.driverade.data.DriverPreferences
 import com.driverade.service.DriveradeState
-import com.driverade.service.LoggerService
 import com.google.android.material.switchmaterial.SwitchMaterial
 import java.io.File
 import java.text.SimpleDateFormat
@@ -27,6 +25,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var prefs: DriverPreferences
     private var telemetryText: TextView? = null
     private var subtitleText: TextView? = null
+    private var stateListener: (() -> Unit)? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -37,10 +36,6 @@ class MainActivity : AppCompatActivity() {
 
         telemetryText = findViewById(R.id.tvNetEarnings)
         subtitleText = findViewById(R.id.tvActiveHours)
-
-        DriveradeState.onStatsUpdated = {
-            refreshTelemetry()
-        }
 
         findViewById<View>(R.id.tvStatusIndicator)?.setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -75,7 +70,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        DriveradeState.addListener(refreshSwitches)
+        stateListener = {
+            refreshSwitches()
+            refreshTelemetry()
+        }
+        stateListener?.let { DriveradeState.addListener(it) }
         refreshSwitches()
 
         switchLogger?.setOnCheckedChangeListener { _, isChecked ->
@@ -86,6 +85,7 @@ class MainActivity : AppCompatActivity() {
                 alertActive -> DriveradeState.OperatingMode.ALERT_ONLY
                 else -> DriveradeState.OperatingMode.OFF
             }
+            prefs.onModeChanged(newMode != DriveradeState.OperatingMode.OFF)
             DriveradeState.updateOperatingMode(newMode)
         }
 
@@ -97,6 +97,7 @@ class MainActivity : AppCompatActivity() {
                 loggerActive -> DriveradeState.OperatingMode.LOGGER_ONLY
                 else -> DriveradeState.OperatingMode.OFF
             }
+            prefs.onModeChanged(newMode != DriveradeState.OperatingMode.OFF)
             DriveradeState.updateOperatingMode(newMode)
         }
 
@@ -108,6 +109,11 @@ class MainActivity : AppCompatActivity() {
 
         refreshTelemetry()
         refreshSubtitles()
+    }
+
+    override fun onDestroy() {
+        stateListener?.let { DriveradeState.removeListener(it) }
+        super.onDestroy()
     }
 
     private fun refreshTelemetry() {
@@ -203,7 +209,7 @@ class MainActivity : AppCompatActivity() {
     private fun showDiagnosticsDialog() {
         AlertDialog.Builder(this)
             .setTitle("Diagnostics & Logs")
-            .setMessage("Export raw offer logs and screen parsed data for diagnostics?")
+            .setMessage("Export offer metrics and parsed totals for diagnostics?")
             .setPositiveButton("Export Logs") { _, _ ->
                 exportLogs()
             }
@@ -223,6 +229,7 @@ class MainActivity : AppCompatActivity() {
             sb.append("UBER Map Total: ").append(prefs.getLastSeenMapTotal("UBER")).append("\n")
             sb.append("LYFT Map Total: ").append(prefs.getLastSeenMapTotal("LYFT")).append("\n")
             sb.append("HICH Map Total: ").append(prefs.getLastSeenMapTotal("HICH")).append("\n")
+            sb.append("\nOffer Diagnostics:\n").append(prefs.getOfferDiagnostics()).append("\n")
 
             logFile.writeText(sb.toString())
 
