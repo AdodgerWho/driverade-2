@@ -34,14 +34,14 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.fragment_dashboard)
         prefs = DriverPreferences(this)
 
-        telemetryText = findViewById(R.id.tvDailyEarnings)
-        subtitleText = findViewById(R.id.tvSubtitle)
+        telemetryText = findViewById(R.id.tvNetEarnings)
+        subtitleText = findViewById(R.id.tvActiveHours)
 
         DriveradeState.onStatsUpdated = {
             refreshTelemetry()
         }
 
-        findViewById<Button>(R.id.btnAccessibility).setOnClickListener {
+        // findViewById<Button>(R.id.btnAccessibility).setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
 
@@ -82,10 +82,10 @@ class MainActivity : AppCompatActivity() {
             DriveradeState.updateOperatingMode(newMode)
         }
 
-        findViewById<View>(R.id.btnEditEarnings)?.setOnClickListener { showEditEarningsDialog() }
-        findViewById<View>(R.id.btnEditHours)?.setOnClickListener { showEditHoursDialog() }
+        findViewById<View>(R.id.cardEarnings)?.setOnClickListener { showEditEarningsDialog() }
+        findViewById<View>(R.id.cardActiveTime)?.setOnClickListener { showEditHoursDialog() }
         findViewById<View>(R.id.btnThresholds)?.setOnClickListener { showThresholdsDialog() }
-        findViewById<View>(R.id.btnTimings)?.setOnClickListener { showAdvancedTimingsDialog() }
+        findViewById<View>(R.id.btnAdvancedSettings)?.setOnClickListener { showAdvancedTimingsDialog() }
         findViewById<View>(R.id.btnLoggerView)?.setOnClickListener { showDiagnosticsDialog() }
 
         refreshTelemetry()
@@ -100,9 +100,7 @@ class MainActivity : AppCompatActivity() {
         val formatted = "$${String.format(Locale.US, "%.2f", earnings)}"
         telemetryText?.text = formatted
 
-        val subtitle = "Active Shift: ${String.format(Locale.US, "%.2f", hours)} hrs
-" +
-                "Effective Rate: $${String.format(Locale.US, "%.2f", rate)}/hr"
+        val subtitle = "Active Shift: ${String.format(Locale.US, "%.2f", hours)} hrs • Effective Rate: \$${String.format(Locale.US, "%.2f", rate)}/hr"
         subtitleText?.text = subtitle
     }
 
