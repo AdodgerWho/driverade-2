@@ -45,7 +45,7 @@ class OptimizedOfferEngine(
                 }
             }
             for (i in 0 until current.childCount) {
-                current.getChild(i)?.let { child ->
+                current.getChild(i)?.let { child: AccessibilityNodeInfo ->
                     try { parseTopMiddle(child) } finally { child.recycle() }
                 }
             }
@@ -78,7 +78,7 @@ class OptimizedOfferEngine(
             }
 
             for (i in 0 until current.childCount) {
-                current.getChild(i)?.let { child ->
+                current.getChild(i)?.let { child: AccessibilityNodeInfo ->
                     try {
                         val result = traverse(child)
                         if (result != null) return result
@@ -108,7 +108,7 @@ class OptimizedOfferEngine(
                 }
             }
             for (i in 0 until current.childCount) {
-                current.getChild(i)?.let { child ->
+                current.getChild(i)?.let { child: AccessibilityNodeInfo ->
                     try { extract(child) } finally { child.recycle() }
                 }
             }

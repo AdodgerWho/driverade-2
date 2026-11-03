@@ -97,7 +97,7 @@ class MainActivity : AppCompatActivity() {
                 alertActive -> DriveradeState.OperatingMode.ALERT_ONLY
                 else -> DriveradeState.OperatingMode.OFF
             }
-            DriveradeState.setMode(newMode)
+            DriveradeState.updateOperatingMode(newMode)
             updateUIState()
         }
 
@@ -109,7 +109,7 @@ class MainActivity : AppCompatActivity() {
                 loggerActive -> DriveradeState.OperatingMode.LOGGER_ONLY
                 else -> DriveradeState.OperatingMode.OFF
             }
-            DriveradeState.setMode(newMode)
+            DriveradeState.updateOperatingMode(newMode)
             updateUIState()
         }
 
