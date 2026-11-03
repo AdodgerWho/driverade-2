@@ -61,6 +61,17 @@ class DriverPreferences(context: Context) {
             prefs.edit().putFloat("today_earnings", value.coerceAtLeast(0.0).toFloat()).apply()
         }
 
+    var todayActiveHours: Double
+        get() {
+            checkDayRollover()
+            return prefs.getLong("today_active_ms", 0L) / 3_600_000.0
+        }
+        set(value) {
+            checkDayRollover()
+            val ms = (value.coerceAtLeast(0.0) * 3_600_000.0).toLong()
+            prefs.edit().putLong("today_active_ms", ms).apply()
+        }
+
     fun handleMapTotalUpdate(newTotal: Double, appTag: String) {
         checkDayRollover()
         val cleaned = newTotal.coerceAtLeast(0.0)
@@ -108,3 +119,4 @@ class DriverPreferences(context: Context) {
             .apply()
     }
 }
+
