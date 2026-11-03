@@ -61,17 +61,6 @@ class DriverPreferences(context: Context) {
             prefs.edit().putFloat("today_earnings", value.coerceAtLeast(0.0).toFloat()).apply()
         }
 
-    var todayActiveHours: Double
-        get() {
-            checkDayRollover()
-            return prefs.getLong("today_active_ms", 0L) / 3_600_000.0
-        }
-        set(value) {
-            checkDayRollover()
-            val ms = (value.coerceAtLeast(0.0) * 3_600_000.0).toLong()
-            prefs.edit().putLong("today_active_ms", ms).apply()
-        }
-
     fun handleMapTotalUpdate(newTotal: Double, appTag: String) {
         checkDayRollover()
         val cleaned = newTotal.coerceAtLeast(0.0)
@@ -106,7 +95,47 @@ class DriverPreferences(context: Context) {
         }
     }
 
+    fun onModeChanged(isActive: Boolean) {
+        checkDayRollover()
+        val now = System.currentTimeMillis()
+        val start = prefs.getLong("active_session_start_ms", 0L)
+        if (isActive) {
+            if (start == 0L) {
+                prefs.edit().putLong("active_session_start_ms", now).apply()
+            }
+        } else {
+            if (start > 0L) {
+                val elapsed = (now - start).coerceAtLeast(0L)
+                val total = prefs.getLong("today_active_ms", 0L) + elapsed
+                prefs.edit()
+                    .putLong("today_active_ms", total)
+                    .putLong("active_session_start_ms", 0L)
+                    .apply()
+            }
+        }
+    }
+
+    var todayActiveHours: Double
+        get() {
+            checkDayRollover()
+            val baseMs = prefs.getLong("today_active_ms", 0L)
+            val start = prefs.getLong("active_session_start_ms", 0L)
+            val liveMs = if (start > 0L) (System.currentTimeMillis() - start).coerceAtLeast(0L) else 0L
+            return (baseMs + liveMs) / 3600000.0
+        }
+        set(hours) {
+            checkDayRollover()
+            val ms = (hours.coerceAtLeast(0.0) * 3600000.0).toLong()
+            val isRunning = prefs.getLong("active_session_start_ms", 0L) > 0L
+            val editor = prefs.edit().putLong("today_active_ms", ms)
+            if (isRunning) {
+                editor.putLong("active_session_start_ms", System.currentTimeMillis())
+            }
+            editor.apply()
+        }
+
     fun resetTodayStats() {
+        val isRunning = prefs.getLong("active_session_start_ms", 0L) > 0L
         prefs.edit()
             .putString("stats_date", todayKey())
             .putFloat("today_earnings", 0f)
@@ -116,7 +145,7 @@ class DriverPreferences(context: Context) {
             .putInt("today_offers", 0)
             .putInt("today_good_offers", 0)
             .putLong("today_active_ms", 0L)
+            .putLong("active_session_start_ms", if (isRunning) System.currentTimeMillis() else 0L)
             .apply()
     }
 }
-

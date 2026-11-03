@@ -11,8 +11,8 @@ android {
         applicationId = "com.driverade"
         minSdk = 26
         targetSdk = 34
-        versionCode = 73
-        versionName = "3.43"
+        versionCode = 75
+        versionName = "3.45"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
