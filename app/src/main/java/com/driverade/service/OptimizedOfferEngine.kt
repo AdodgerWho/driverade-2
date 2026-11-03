@@ -1,6 +1,6 @@
 package com.driverade.service
 
-import android.view.accessibility.AccessibilityNodeInfo
+import android.accessibilityservice.AccessibilityNodeInfo
 import android.graphics.Rect
 
 class OptimizedOfferEngine(

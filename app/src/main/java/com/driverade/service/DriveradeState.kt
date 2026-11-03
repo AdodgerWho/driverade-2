@@ -27,6 +27,9 @@ object DriveradeState {
     var targetRateSetting: Double = 25.0
     var minPayoutSetting: Double = 10.0
 
+    // Callbacks for UI telemetry / status listeners
+    var onStatsUpdated: (() -> Unit)? = null
+
     private val listeners = mutableListOf<() -> Unit>()
 
     fun addListener(listener: () -> Unit) {
@@ -39,6 +42,7 @@ object DriveradeState {
 
     fun notifyStatsChanged() {
         Handler(Looper.getMainLooper()).post {
+            onStatsUpdated?.invoke()
             for (listener in listeners) {
                 try {
                     listener()
