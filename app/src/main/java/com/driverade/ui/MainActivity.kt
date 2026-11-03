@@ -49,6 +49,7 @@ class MainActivity : AppCompatActivity() {
         val switchAlert = findViewById<SwitchMaterial>(R.id.switchAlert)
         val switchLogger = findViewById<SwitchMaterial>(R.id.switchLogger)
 
+        val statusPill = findViewById<TextView>(R.id.tvStatusIndicator)
         val refreshSwitches = {
             val mode = DriveradeState.currentMode
             val isLoggerActive = mode == DriveradeState.OperatingMode.LOGGER_ONLY || mode == DriveradeState.OperatingMode.ALERT_AND_LOGGER
@@ -56,6 +57,22 @@ class MainActivity : AppCompatActivity() {
             
             switchLogger?.isChecked = isLoggerActive
             switchAlert?.isChecked = isAlertActive
+
+            val (label, color) = when {
+                isLoggerActive && isAlertActive -> "● ALERT + LOGGER" to 0xFF30A46C.toInt()
+                isAlertActive -> "● ALERTER ACTIVE" to 0xFF30A46C.toInt()
+                isLoggerActive -> "● LOGGER ACTIVE" to 0xFF3B82F6.toInt()
+                else -> "● STANDBY" to 0xFFE5484D.toInt()
+            }
+            statusPill?.let { pill ->
+                pill.text = label
+                pill.setTextColor(color)
+                pill.background = android.graphics.drawable.GradientDrawable().apply {
+                    cornerRadius = 50f * resources.displayMetrics.density
+                    setColor((color and 0x00FFFFFF) or 0x22000000)
+                    setStroke(resources.displayMetrics.density.toInt().coerceAtLeast(1), (color and 0x00FFFFFF) or 0x55000000)
+                }
+            }
         }
 
         DriveradeState.addListener(refreshSwitches)
