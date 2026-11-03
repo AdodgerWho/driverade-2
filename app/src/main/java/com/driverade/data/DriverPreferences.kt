@@ -33,6 +33,14 @@ class DriverPreferences(context: Context) {
         get() = prefs.getLong("custom_polling_ms", DEFAULT_TIMED_MS)
         set(value) { prefs.edit().putLong("custom_polling_ms", value.coerceIn(MIN_DELAY_MS, MAX_DELAY_MS)).apply() }
 
+    var targetRate: Double
+        get() = prefs.getFloat("target_rate", 25f).toDouble()
+        set(value) { prefs.edit().putFloat("target_rate", value.coerceAtLeast(0.0).toFloat()).apply() }
+
+    var minPayout: Double
+        get() = prefs.getFloat("min_payout", 10f).toDouble()
+        set(value) { prefs.edit().putFloat("min_payout", value.coerceAtLeast(0.0).toFloat()).apply() }
+
     // Pill Customization settings
     var showHourlyOnPill: Boolean
         get() = prefs.getBoolean("show_hourly_on_pill", true)

@@ -4,10 +4,9 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
+import android.text.InputType
 import android.view.View
-import android.widget.Button
 import android.widget.EditText
-import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -33,6 +32,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.fragment_dashboard)
         prefs = DriverPreferences(this)
+        DriveradeState.targetRateSetting = prefs.targetRate
+        DriveradeState.minPayoutSetting = prefs.minPayout
 
         telemetryText = findViewById(R.id.tvNetEarnings)
         subtitleText = findViewById(R.id.tvActiveHours)
@@ -41,7 +42,7 @@ class MainActivity : AppCompatActivity() {
             refreshTelemetry()
         }
 
-        // findViewById<Button>(R.id.btnAccessibility).setOnClickListener {
+        findViewById<View>(R.id.tvStatusIndicator)?.setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
 
@@ -104,7 +105,34 @@ class MainActivity : AppCompatActivity() {
         subtitleText?.text = subtitle
     }
 
-    private fun refreshSubtitles() {}
+    private fun refreshSubtitles() {
+        findViewById<TextView>(R.id.tvTargetSub)?.text =
+            String.format(Locale.US, "Min \$%.1f/hr  •  \$%.1f floor", prefs.targetRate, prefs.minPayout)
+        findViewById<TextView>(R.id.tvTimingSub)?.text =
+            "Debounce ${prefs.customDebounceMs}ms  •  Poll ${prefs.customPollingMs}ms"
+    }
+
+    private fun numberInput(value: String) = EditText(this).apply {
+        inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+        setText(value)
+    }
+
+    private fun twoFieldDialog(title: String, labelA: String, a: EditText, labelB: String, b: EditText, onSave: () -> Unit) {
+        val box = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 16, 48, 0)
+            addView(TextView(context).apply { text = labelA })
+            addView(a)
+            addView(TextView(context).apply { text = labelB })
+            addView(b)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setView(box)
+            .setPositiveButton("Save") { _, _ -> onSave(); refreshSubtitles() }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
 
     private fun showEditEarningsDialog() {
         val input = EditText(this).apply {
@@ -113,6 +141,7 @@ class MainActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle("Edit Earnings")
             .setView(input)
+            .setNegativeButton("Cancel", null)
             .setPositiveButton("Save") { _, _ ->
                 input.text.toString().toDoubleOrNull()?.let { prefs.todayEarnings = it }
                 refreshTelemetry()
@@ -134,8 +163,25 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun showThresholdsDialog() {}
-    private fun showAdvancedTimingsDialog() {}
+    private fun showThresholdsDialog() {
+        val rate = numberInput(prefs.targetRate.toString())
+        val payout = numberInput(prefs.minPayout.toString())
+        twoFieldDialog("Offer Thresholds", "Target rate (\$/hr)", rate, "Minimum payout (\$)", payout) {
+            rate.text.toString().toDoubleOrNull()?.let { prefs.targetRate = it }
+            payout.text.toString().toDoubleOrNull()?.let { prefs.minPayout = it }
+            DriveradeState.targetRateSetting = prefs.targetRate
+            DriveradeState.minPayoutSetting = prefs.minPayout
+        }
+    }
+
+    private fun showAdvancedTimingsDialog() {
+        val debounce = numberInput(prefs.customDebounceMs.toString())
+        val polling = numberInput(prefs.customPollingMs.toString())
+        twoFieldDialog("Advanced Timings", "Debounce (ms)", debounce, "Polling (ms)", polling) {
+            debounce.text.toString().toDoubleOrNull()?.let { prefs.customDebounceMs = it.toLong() }
+            polling.text.toString().toDoubleOrNull()?.let { prefs.customPollingMs = it.toLong() }
+        }
+    }
 
     private fun showDiagnosticsDialog() {
         AlertDialog.Builder(this)
