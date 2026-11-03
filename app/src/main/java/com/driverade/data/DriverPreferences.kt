@@ -1,12 +1,16 @@
 package com.driverade.data
 
 import android.content.Context
+import android.util.Log
+import java.io.File
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 class DriverPreferences(context: Context) {
-    private val prefs = context.getSharedPreferences("driverade_timing_prefs", Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    private val prefs = appContext.getSharedPreferences("driverade_timing_prefs", Context.MODE_PRIVATE)
 
     companion object {
         const val DEFAULT_DEBOUNCE_MS = 350L
@@ -17,11 +21,24 @@ class DriverPreferences(context: Context) {
 
     private fun todayKey(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
+    private fun todayDiagnosticsFile(): File = File(appContext.filesDir, "offer-diagnostics-${todayKey()}.log")
+
     private fun checkDayRollover() {
         val today = todayKey()
         val savedDay = prefs.getString("stats_date", "")
         if (savedDay != today) {
-            prefs.edit().putString("stats_date", today).apply()
+            val isRunning = prefs.getLong("active_session_start_ms", 0L) > 0L
+            prefs.edit()
+                .putString("stats_date", today)
+                .putFloat("today_earnings", 0f)
+                .putFloat("last_seen_map_total_UBER", -1f)
+                .putFloat("last_seen_map_total_LYFT", -1f)
+                .putFloat("last_seen_map_total_HICH", -1f)
+                .putInt("today_offers", 0)
+                .putInt("today_good_offers", 0)
+                .putLong("today_active_ms", 0L)
+                .putLong("active_session_start_ms", if (isRunning) System.currentTimeMillis() else 0L)
+                .apply()
         }
     }
 
@@ -69,21 +86,23 @@ class DriverPreferences(context: Context) {
             prefs.edit().putFloat("today_earnings", value.coerceAtLeast(0.0).toFloat()).apply()
         }
 
-    fun handleMapTotalUpdate(newTotal: Double, appTag: String) {
+    fun handleMapTotalUpdate(newTotal: Double, appTag: String): Boolean {
         checkDayRollover()
         val cleaned = newTotal.coerceAtLeast(0.0)
         val last = getLastSeenMapTotal(appTag)
         if (last < 0.0) {
             setLastSeenMapTotal(appTag, cleaned)
-            return
+            return false
         }
         if (cleaned > last) {
             val delta = cleaned - last
             todayEarnings += delta
             setLastSeenMapTotal(appTag, cleaned)
+            return true
         } else if (cleaned != last) {
             setLastSeenMapTotal(appTag, cleaned)
         }
+        return false
     }
 
     var todayOffersCount: Int
@@ -94,13 +113,41 @@ class DriverPreferences(context: Context) {
         get() { checkDayRollover(); return prefs.getInt("today_good_offers", 0) }
         set(value) { checkDayRollover(); prefs.edit().putInt("today_good_offers", value.coerceAtLeast(0)).apply() }
 
-    fun recordOffer(fare: Double, isGood: Boolean, autoAddEarnings: Boolean = true) {
+    fun recordOffer(
+        fare: Double,
+        isGood: Boolean,
+        autoAddEarnings: Boolean = true,
+        isAccepted: Boolean = autoAddEarnings,
+        appTag: String = "OTHER",
+        hourlyRate: Double = 0.0,
+        countAsNewOffer: Boolean = true
+    ) {
         checkDayRollover()
-        todayOffersCount += 1
-        if (isGood) todayGoodOffersCount += 1
+        if (countAsNewOffer) {
+            todayOffersCount += 1
+            if (isGood) todayGoodOffersCount += 1
+        }
         if (autoAddEarnings && fare > 0.0) {
             todayEarnings += fare
         }
+        val diagnostic = listOf(
+            System.currentTimeMillis().toString(),
+            appTag,
+            String.format(Locale.US, "%.2f", fare),
+            String.format(Locale.US, "%.2f", hourlyRate),
+            isGood.toString(),
+            isAccepted.toString()
+        ).joinToString("|")
+        try {
+            todayDiagnosticsFile().appendText("$diagnostic\n")
+        } catch (e: IOException) {
+            Log.e("DriverPreferences", "Unable to save offer diagnostic", e)
+        }
+    }
+
+    fun getOfferDiagnostics(): String {
+        checkDayRollover()
+        return todayDiagnosticsFile().takeIf { it.exists() }?.readText().orEmpty()
     }
 
     fun onModeChanged(isActive: Boolean) {
@@ -155,5 +202,6 @@ class DriverPreferences(context: Context) {
             .putLong("today_active_ms", 0L)
             .putLong("active_session_start_ms", if (isRunning) System.currentTimeMillis() else 0L)
             .apply()
+        todayDiagnosticsFile().writeText("")
     }
 }
