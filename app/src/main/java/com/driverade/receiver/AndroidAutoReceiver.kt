@@ -19,6 +19,8 @@ class AndroidAutoReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action ?: return
+        // Apps can't toggle Wi-Fi on Android 10+; setWifiEnabled is a no-op there.
+        if (action != Intent.ACTION_BOOT_COMPLETED && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) return
         val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return
         val prefs = context.getSharedPreferences("driverade_wifi_prefs", Context.MODE_PRIVATE)
 

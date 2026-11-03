@@ -10,13 +10,14 @@ import com.driverade.data.DriverPreferences
 class LoggerService : AccessibilityService() {
 
     private lateinit var prefs: DriverPreferences
-    private val engine = OptimizedOfferEngine()
+    private lateinit var engine: OptimizedOfferEngine
     private var lastRecordedFare: Double = -1.0
     private var lastRecordTimeMs: Long = 0L
 
     override fun onCreate() {
         super.onCreate()
         prefs = DriverPreferences(this)
+        engine = OptimizedOfferEngine(prefs.targetRate, prefs.minPayout)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
