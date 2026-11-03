@@ -50,7 +50,7 @@ class MainActivity : AppCompatActivity() {
         val switchLogger = findViewById<SwitchMaterial>(R.id.switchLogger)
 
         val statusPill = findViewById<TextView>(R.id.tvStatusIndicator)
-        val refreshSwitches = {
+        val refreshSwitches: () -> Unit = {
             val mode = DriveradeState.currentMode
             val isLoggerActive = mode == DriveradeState.OperatingMode.LOGGER_ONLY || mode == DriveradeState.OperatingMode.ALERT_AND_LOGGER
             val isAlertActive = mode == DriveradeState.OperatingMode.ALERT_ONLY || mode == DriveradeState.OperatingMode.ALERT_AND_LOGGER
