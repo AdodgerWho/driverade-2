@@ -41,10 +41,6 @@ class MainActivity : AppCompatActivity() {
             refreshTelemetry()
         }
 
-        // findViewById<Button>(R.id.btnAccessibility).setOnClickListener {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-        }
-
         val switchAlert = findViewById<SwitchMaterial>(R.id.switchAlert)
         val switchLogger = findViewById<SwitchMaterial>(R.id.switchLogger)
 
