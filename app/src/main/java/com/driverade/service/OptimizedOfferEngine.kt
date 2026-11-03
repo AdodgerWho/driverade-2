@@ -1,6 +1,6 @@
 package com.driverade.service
 
-import android.view.accessibility.AccessibilityNodeInfo
+import android.accessibilityservice.AccessibilityNodeInfo
 import android.graphics.Rect
 
 class OptimizedOfferEngine(
@@ -14,17 +14,16 @@ class OptimizedOfferEngine(
     data class Metrics(
         var fare: Double = 0.0,
         var hourlyRate: Double = 0.0,
-        var isAuthoritativeMapTotal: Boolean = false
+        var isAuthoritativeMapTotal: Boolean = false,
+        var isRideOffer: Boolean = false
     )
 
-    fun evaluateNode(rootNode: AccessibilityNodeInfo): Metrics? {
-        val metrics = findAndParseOffer(rootNode) ?: return null
+    fun evaluateNode(node: AccessibilityNodeInfo): Metrics? {
+        val metrics = findAndParseOffer(node) ?: return null
         val now = System.currentTimeMillis()
-
         if (!metrics.isAuthoritativeMapTotal && metrics.fare == lastCachedFare && metrics.hourlyRate == lastCachedRate && (now - lastOfferTimestampMs) < 15000L) {
             return null
         }
-
         lastCachedFare = metrics.fare
         lastCachedRate = metrics.hourlyRate
         lastOfferTimestampMs = now
@@ -40,38 +39,38 @@ class OptimizedOfferEngine(
                 val rect = Rect()
                 current.getBoundsInScreen(rect)
                 if (rect.top >= 0 && rect.top <= 240 && rect.width() > 0 && rect.height() > 0) {
-                    val cleaned = text.replace(Regex("[^0-9.]"), "")
-                    cleaned.toDoubleOrNull()?.let {
-                        if (it >= 0.0 && it < 10000.0) {
-                            topMiddleFare = it
-                        }
+                    text.replace(Regex("[^0-9.]"), "").toDoubleOrNull()?.let {
+                        if (it >= 0.0 && it < 10000.0) topMiddleFare = it
                     }
                 }
             }
             for (i in 0 until current.childCount) {
                 current.getChild(i)?.let { child ->
-                    try { 
-                        parseTopMiddle(child) 
-                    } finally { 
-                        child.recycle() 
-                    }
+                    try { parseTopMiddle(child) } finally { child.recycle() }
                 }
             }
         }
         parseTopMiddle(node)
-
         if (topMiddleFare >= 0.0) {
             return Metrics(fare = topMiddleFare, hourlyRate = 0.0, isAuthoritativeMapTotal = true)
         }
 
+        // Robust Offer and Alert Overlay parsing for Uber, Lyft, and Hich
         fun traverse(current: AccessibilityNodeInfo): Metrics? {
             val text = current.text?.toString() ?: ""
             val desc = current.contentDescription?.toString() ?: ""
+            val combined = "$text $desc"
 
-            if ((text.contains("$") || desc.contains("$")) &&
-                (text.contains("min") || text.contains("mi") || text.contains("/hr"))
-            ) {
-                val metrics = Metrics()
+            val hasCurrency = combined.contains("$")
+            val hasTripKeywords = combined.contains("min", ignoreCase = true) ||
+                                  combined.contains("mi", ignoreCase = true) ||
+                                  combined.contains("/hr", ignoreCase = true) ||
+                                  combined.contains("trip", ignoreCase = true) ||
+                                  combined.contains("ride", ignoreCase = true) ||
+                                  combined.contains("offer", ignoreCase = true)
+
+            if (hasCurrency && (hasTripKeywords || combined.contains("accept", ignoreCase = true))) {
+                val metrics = Metrics(isRideOffer = true)
                 parseMetrics(current, metrics)
                 if (metrics.fare > 0.0 || metrics.hourlyRate > 0.0) {
                     return metrics
@@ -99,17 +98,18 @@ class OptimizedOfferEngine(
             if (text.contains("$") && text.any { it.isDigit() } && !text.contains("/hr", ignoreCase = true) && metrics.fare == 0.0) {
                 text.replace(Regex("[^0-9.]"), "").toDoubleOrNull()?.let { metrics.fare = it }
             }
-            if (text.contains("/hr", ignoreCase = true)) {
-                val ratePart = text.substringBefore("/hr")
-                ratePart.replace(Regex("[^0-9.]"), "").toDoubleOrNull()?.let { metrics.hourlyRate = it }
+            if (text.contains("/hr", ignoreCase = true) || text.contains("$", ignoreCase = true)) {
+                val ratePart = text.substringBefore("/hr").substringBefore("for")
+                ratePart.replace(Regex("[^0-9.]"), "").toDoubleOrNull()?.let {
+                    if (it > metrics.fare && metrics.hourlyRate == 0.0) {
+                        // Might be hourly rate or fare; let's check context
+                        if (text.contains("/hr", ignoreCase = true)) metrics.hourlyRate = it
+                    }
+                }
             }
             for (i in 0 until current.childCount) {
                 current.getChild(i)?.let { child ->
-                    try {
-                        extract(child)
-                    } finally {
-                        child.recycle()
-                    }
+                    try { extract(child) } finally { child.recycle() }
                 }
             }
         }
