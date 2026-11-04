@@ -1,247 +1,222 @@
 package com.driverade.ui
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
-import android.text.InputType
 import android.view.View
 import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.FileProvider
-import com.driverade.R
+import androidx.lifecycle.lifecycleScope
 import com.driverade.data.DriverPreferences
+import com.driverade.databinding.FragmentDashboardBinding
 import com.driverade.service.DriveradeState
-import com.google.android.material.switchmaterial.SwitchMaterial
-import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
+import com.driverade.service.LoggerService
+import com.driverade.service.OptimizedOfferEngine
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
+    private lateinit var binding: FragmentDashboardBinding
     private lateinit var prefs: DriverPreferences
-    private var telemetryText: TextView? = null
-    private var subtitleText: TextView? = null
-    private var stateListener: (() -> Unit)? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.fragment_dashboard)
+        binding = FragmentDashboardBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
         prefs = DriverPreferences(this)
-        DriveradeState.targetRateSetting = prefs.targetRate
-        DriveradeState.minPayoutSetting = prefs.minPayout
+        LoggerService.ensureDiagnosticsHeader(this, prefs)
 
-        telemetryText = findViewById(R.id.tvNetEarnings)
-        subtitleText = findViewById(R.id.tvActiveHours)
+        setupHeaderAndStatusPills()
+        setupModularNavigation()
+        setupThresholdControls()
+        setupPlatformFilterBottomSheet()
+        setupDiagnosticsAndBugReport()
+        observeRealtimeOffers()
+    }
 
-        findViewById<View>(R.id.tvStatusIndicator)?.setOnClickListener {
+    override fun onResume() {
+        super.onResume()
+        updatePermissionStatusPills()
+    }
+
+    private fun setupHeaderAndStatusPills() {
+        binding.tvVersionBadge.text = "Driverade v3.60"
+        updatePermissionStatusPills()
+
+        binding.pillAccessibilityStatus.setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
 
-        val switchAlert = findViewById<SwitchMaterial>(R.id.switchAlert)
-        val switchLogger = findViewById<SwitchMaterial>(R.id.switchLogger)
-
-        val statusPill = findViewById<TextView>(R.id.tvStatusIndicator)
-        val refreshSwitches: () -> Unit = {
-            val mode = DriveradeState.currentMode
-            val isLoggerActive = mode == DriveradeState.OperatingMode.LOGGER_ONLY || mode == DriveradeState.OperatingMode.ALERT_AND_LOGGER
-            val isAlertActive = mode == DriveradeState.OperatingMode.ALERT_ONLY || mode == DriveradeState.OperatingMode.ALERT_AND_LOGGER
-            
-            switchLogger?.isChecked = isLoggerActive
-            switchAlert?.isChecked = isAlertActive
-
-            val (label, color) = when {
-                isLoggerActive && isAlertActive -> "● ALERT + LOGGER" to 0xFF30A46C.toInt()
-                isAlertActive -> "● ALERTER ACTIVE" to 0xFF30A46C.toInt()
-                isLoggerActive -> "● LOGGER ACTIVE" to 0xFF3B82F6.toInt()
-                else -> "● STANDBY" to 0xFFE5484D.toInt()
+        binding.pillOverlayStatus.setOnClickListener {
+            if (!Settings.canDrawOverlays(this)) {
+                val intent = Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:$packageName")
+                )
+                startActivity(intent)
+            } else {
+                Toast.makeText(this, "Overlay permission active", Toast.LENGTH_SHORT).show()
             }
-            statusPill?.let { pill ->
-                pill.text = label
-                pill.setTextColor(color)
-                pill.background = android.graphics.drawable.GradientDrawable().apply {
-                    cornerRadius = 50f * resources.displayMetrics.density
-                    setColor((color and 0x00FFFFFF) or 0x22000000)
-                    setStroke(resources.displayMetrics.density.toInt().coerceAtLeast(1), (color and 0x00FFFFFF) or 0x55000000)
+        }
+    }
+
+    private fun updatePermissionStatusPills() {
+        val overlayEnabled = Settings.canDrawOverlays(this)
+        val accessibilityEnabled = isAccessibilityServiceEnabled()
+
+        binding.pillAccessibilityStatus.text =
+            if (accessibilityEnabled) "Accessibility: ON" else "Accessibility: OFF (Tap)"
+        binding.pillOverlayStatus.text =
+            if (overlayEnabled) "Overlay: ON" else "Overlay: OFF (Tap)"
+    }
+
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        val expectedComponent = "$packageName/${OptimizedOfferEngine::class.java.canonicalName}"
+        val enabledServices = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        return enabledServices.contains(expectedComponent)
+    }
+
+    private fun setupModularNavigation() {
+        binding.navBtnDashboard.setOnClickListener { showSection(Section.DASHBOARD) }
+        binding.navBtnHeatmaps.setOnClickListener {
+            refreshHeatmapSummary()
+            showSection(Section.HEATMAPS)
+        }
+        binding.navBtnSettings.setOnClickListener { showSection(Section.SETTINGS) }
+        showSection(Section.DASHBOARD)
+    }
+
+    private enum class Section { DASHBOARD, HEATMAPS, SETTINGS }
+
+    private fun showSection(section: Section) {
+        binding.sectionDashboard.visibility = if (section == Section.DASHBOARD) View.VISIBLE else View.GONE
+        binding.sectionHeatmaps.visibility = if (section == Section.HEATMAPS) View.VISIBLE else View.GONE
+        binding.sectionSettings.visibility = if (section == Section.SETTINGS) View.VISIBLE else View.GONE
+    }
+
+    private fun setupThresholdControls() {
+        binding.etTargetHourlyRate.setText(String.format(Locale.US, "%.2f", prefs.targetHourlyRate))
+        binding.etMinPayout.setText(String.format(Locale.US, "%.2f", prefs.minPayout))
+
+        binding.btnSaveThresholds.setOnClickListener {
+            val target = binding.etTargetHourlyRate.text.toString().toDoubleOrNull() ?: 25.0
+            val minPay = binding.etMinPayout.text.toString().toDoubleOrNull() ?: 10.0
+            prefs.targetHourlyRate = target
+            prefs.minPayout = minPay
+            LoggerService.writeDiagnosticsSnapshot(
+                this,
+                prefs,
+                listOfNotNull(DriveradeState.latestOffer.value)
+            )
+            Toast.makeText(this, "Saved v3.60 thresholds ($target/hr, min $$minPay)", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun setupPlatformFilterBottomSheet() {
+        binding.btnOpenPlatformSheet.setOnClickListener {
+            val sheet = BottomSheetDialog(this)
+            val container = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(48, 48, 48, 64)
+            }
+
+            val header = TextView(this).apply {
+                text = "Active Rideshare & Delivery Platforms"
+                textSize = 18f
+                setPadding(0, 0, 0, 24)
+            }
+            container.addView(header)
+
+            val platforms = listOf(
+                "UBER" to "Uber Driver (Rideshare)",
+                "UBER_EATS" to "Uber Eats (Delivery)",
+                "LYFT" to "Lyft Driver",
+                "HICH" to "Hich",
+                "DOORDASH" to "DoorDash Dasher",
+                "GRUBHUB" to "Grubhub for Drivers"
+            )
+
+            platforms.forEach { (key, label) ->
+                val sw = Switch(this).apply {
+                    text = label
+                    isChecked = prefs.isPlatformEnabled(key)
+                    setPadding(0, 20, 0, 20)
+                    setOnCheckedChangeListener { _, isChecked ->
+                        prefs.setPlatformEnabled(key, isChecked)
+                    }
+                }
+                container.addView(sw)
+            }
+
+            sheet.setContentView(container)
+            sheet.show()
+        }
+    }
+
+    private fun refreshHeatmapSummary() {
+        val grid = DriveradeState.getRollingGridDensity()
+        binding.tvHeatmapStatus.text = if (grid.isEmpty()) {
+            "Rolling 5-Min Geohash Pool: 0 active cells (On-device coordinate blurring active)"
+        } else {
+            grid.entries.joinToString("\n") { "${it.key}: ${it.value} validated offers" }
+        }
+    }
+
+    private fun setupDiagnosticsAndBugReport() {
+        binding.btnSendBugReport.setOnClickListener {
+            val feedbackInput = EditText(this).apply {
+                hint = "Describe what happened (e.g., Uber card missed)..."
+            }
+            AlertDialog.Builder(this)
+                .setTitle("Send Diagnostics to Support")
+                .setMessage("Attaches driverade_diagnostics.txt and emails adodgerwho@gmail.com")
+                .setView(feedbackInput)
+                .setPositiveButton("Send Email") { _, _ ->
+                    val intent = LoggerService.createBugReportEmailIntent(
+                        this,
+                        prefs,
+                        feedbackInput.text.toString()
+                    )
+                    startActivity(Intent.createChooser(intent, "Send Diagnostics Bug Report"))
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+    }
+
+    private fun observeRealtimeOffers() {
+        lifecycleScope.launch {
+            DriveradeState.latestOffer.collectLatest { offer ->
+                if (offer != null) {
+                    binding.tvLatestOfferHeadline.text = String.format(
+                        Locale.US,
+                        "%s: $%.2f/hr ($%.2f)",
+                        offer.platform,
+                        offer.hourlyRate,
+                        offer.payout
+                    )
+                    binding.tvLatestOfferSubtext.text = String.format(
+                        Locale.US,
+                        "%.1f mi • %.0f min • $%.2f/mi",
+                        offer.totalMiles,
+                        offer.totalMinutes,
+                        offer.dollarsPerMile
+                    )
                 }
             }
-        }
-
-        stateListener = {
-            refreshSwitches()
-            refreshTelemetry()
-        }
-        stateListener?.let { DriveradeState.addListener(it) }
-        refreshSwitches()
-
-        switchLogger?.setOnCheckedChangeListener { _, isChecked ->
-            val alertActive = switchAlert?.isChecked ?: false
-            val newMode = when {
-                isChecked && alertActive -> DriveradeState.OperatingMode.ALERT_AND_LOGGER
-                isChecked -> DriveradeState.OperatingMode.LOGGER_ONLY
-                alertActive -> DriveradeState.OperatingMode.ALERT_ONLY
-                else -> DriveradeState.OperatingMode.OFF
-            }
-            prefs.onModeChanged(newMode != DriveradeState.OperatingMode.OFF)
-            DriveradeState.updateOperatingMode(newMode)
-        }
-
-        switchAlert?.setOnCheckedChangeListener { _, isChecked ->
-            val loggerActive = switchLogger?.isChecked ?: false
-            val newMode = when {
-                isChecked && loggerActive -> DriveradeState.OperatingMode.ALERT_AND_LOGGER
-                isChecked -> DriveradeState.OperatingMode.ALERT_ONLY
-                loggerActive -> DriveradeState.OperatingMode.LOGGER_ONLY
-                else -> DriveradeState.OperatingMode.OFF
-            }
-            prefs.onModeChanged(newMode != DriveradeState.OperatingMode.OFF)
-            DriveradeState.updateOperatingMode(newMode)
-        }
-
-        findViewById<View>(R.id.cardEarnings)?.setOnClickListener { showEditEarningsDialog() }
-        findViewById<View>(R.id.cardActiveTime)?.setOnClickListener { showEditHoursDialog() }
-        findViewById<View>(R.id.btnThresholds)?.setOnClickListener { showThresholdsDialog() }
-        findViewById<View>(R.id.btnAdvancedSettings)?.setOnClickListener { showAdvancedTimingsDialog() }
-        findViewById<View>(R.id.btnLoggerView)?.setOnClickListener { showDiagnosticsDialog() }
-
-        refreshTelemetry()
-        refreshSubtitles()
-    }
-
-    override fun onDestroy() {
-        stateListener?.let { DriveradeState.removeListener(it) }
-        super.onDestroy()
-    }
-
-    private fun refreshTelemetry() {
-        val earnings = prefs.todayEarnings
-        val hours = prefs.todayActiveHours
-        val rate = if (hours > 0) earnings / hours else 0.0
-
-        val formatted = "$${String.format(Locale.US, "%.2f", earnings)}"
-        telemetryText?.text = formatted
-
-        val subtitle = "Active Shift: ${String.format(Locale.US, "%.2f", hours)} hrs • Effective Rate: \$${String.format(Locale.US, "%.2f", rate)}/hr"
-        subtitleText?.text = subtitle
-    }
-
-    private fun refreshSubtitles() {
-        findViewById<TextView>(R.id.tvTargetSub)?.text =
-            String.format(Locale.US, "Min \$%.1f/hr  •  \$%.1f floor", prefs.targetRate, prefs.minPayout)
-        findViewById<TextView>(R.id.tvTimingSub)?.text =
-            "Debounce ${prefs.customDebounceMs}ms  •  Poll ${prefs.customPollingMs}ms"
-    }
-
-    private fun numberInput(value: String) = EditText(this).apply {
-        inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-        setText(value)
-    }
-
-    private fun twoFieldDialog(title: String, labelA: String, a: EditText, labelB: String, b: EditText, onSave: () -> Unit) {
-        val box = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setPadding(48, 16, 48, 0)
-            addView(TextView(context).apply { text = labelA })
-            addView(a)
-            addView(TextView(context).apply { text = labelB })
-            addView(b)
-        }
-        AlertDialog.Builder(this)
-            .setTitle(title)
-            .setView(box)
-            .setPositiveButton("Save") { _, _ -> onSave(); refreshSubtitles() }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private fun showEditEarningsDialog() {
-        val input = EditText(this).apply {
-            setText(String.format(Locale.US, "%.2f", prefs.todayEarnings))
-        }
-        AlertDialog.Builder(this)
-            .setTitle("Edit Earnings")
-            .setView(input)
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Save") { _, _ ->
-                input.text.toString().toDoubleOrNull()?.let { prefs.todayEarnings = it }
-                refreshTelemetry()
-            }
-            .show()
-    }
-
-    private fun showEditHoursDialog() {
-        val input = EditText(this).apply {
-            setText(String.format(Locale.US, "%.2f", prefs.todayActiveHours))
-        }
-        AlertDialog.Builder(this)
-            .setTitle("Edit Active Hours")
-            .setView(input)
-            .setPositiveButton("Save") { _, _ ->
-                input.text.toString().toDoubleOrNull()?.let { prefs.todayActiveHours = it }
-                refreshTelemetry()
-            }
-            .show()
-    }
-
-    private fun showThresholdsDialog() {
-        val rate = numberInput(prefs.targetRate.toString())
-        val payout = numberInput(prefs.minPayout.toString())
-        twoFieldDialog("Offer Thresholds", "Target rate (\$/hr)", rate, "Minimum payout (\$)", payout) {
-            rate.text.toString().toDoubleOrNull()?.let { prefs.targetRate = it }
-            payout.text.toString().toDoubleOrNull()?.let { prefs.minPayout = it }
-            DriveradeState.targetRateSetting = prefs.targetRate
-            DriveradeState.minPayoutSetting = prefs.minPayout
-        }
-    }
-
-    private fun showAdvancedTimingsDialog() {
-        val debounce = numberInput(prefs.customDebounceMs.toString())
-        val polling = numberInput(prefs.customPollingMs.toString())
-        twoFieldDialog("Advanced Timings", "Debounce (ms)", debounce, "Polling (ms)", polling) {
-            debounce.text.toString().toDoubleOrNull()?.let { prefs.customDebounceMs = it.toLong() }
-            polling.text.toString().toDoubleOrNull()?.let { prefs.customPollingMs = it.toLong() }
-        }
-    }
-
-    private fun showDiagnosticsDialog() {
-        AlertDialog.Builder(this)
-            .setTitle("Diagnostics & Logs")
-            .setMessage("Export offer metrics and parsed totals for diagnostics?")
-            .setPositiveButton("Export Logs") { _, _ ->
-                exportLogs()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private fun exportLogs() {
-        try {
-            val logFile = File(cacheDir, "driverade_diagnostics.txt")
-            val sb = StringBuilder()
-            sb.append("Driverade Diagnostics - ").append(SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())).append("\n")
-            sb.append("Target Rate: $").append(DriveradeState.targetRateSetting).append("\n")
-            sb.append("Min Payout: $").append(DriveradeState.minPayoutSetting).append("\n")
-            sb.append("Today Earnings: $").append(prefs.todayEarnings).append("\n")
-            sb.append("Today Active Hours: ").append(prefs.todayActiveHours).append("\n")
-            sb.append("UBER Map Total: ").append(prefs.getLastSeenMapTotal("UBER")).append("\n")
-            sb.append("LYFT Map Total: ").append(prefs.getLastSeenMapTotal("LYFT")).append("\n")
-            sb.append("HICH Map Total: ").append(prefs.getLastSeenMapTotal("HICH")).append("\n")
-            sb.append("\nOffer Diagnostics:\n").append(prefs.getOfferDiagnostics()).append("\n")
-
-            logFile.writeText(sb.toString())
-
-            val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", logFile)
-            val intent = Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(Intent.EXTRA_STREAM, uri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            startActivity(Intent.createChooser(intent, "Share Diagnostics Log"))
-        } catch (e: Exception) {
-            Toast.makeText(this, "Failed to export logs: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 }

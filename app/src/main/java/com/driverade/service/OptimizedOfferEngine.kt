@@ -1,145 +1,317 @@
 package com.driverade.service
 
+import android.accessibilityservice.AccessibilityService
+import android.content.Intent
+import android.graphics.Color
+import android.graphics.PixelFormat
+import android.graphics.drawable.GradientDrawable
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
+import android.util.Log
+import android.util.TypedValue
+import android.view.Gravity
+import android.view.WindowManager
+import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import android.graphics.Rect
+import android.widget.LinearLayout
+import android.widget.TextView
+import com.driverade.data.DriverPreferences
+import com.driverade.receiver.AndroidAutoReceiver
+import java.util.Locale
 
-class OptimizedOfferEngine(
-    private var targetHourlyRate: Double = 25.0,
-    private var minPayout: Double = 10.0
-) {
-    data class Metrics(
-        var fare: Double = 0.0,
-        var hourlyRate: Double = 0.0,
-        var isAuthoritativeMapTotal: Boolean = false,
-        var isRideOffer: Boolean = false,
-        var isGoodOffer: Boolean = false,
-        var signature: String = ""
-    )
+class OptimizedOfferEngine : AccessibilityService() {
 
-    fun updateThresholds(targetHourlyRate: Double, minPayout: Double) {
-        this.targetHourlyRate = targetHourlyRate
-        this.minPayout = minPayout
+    private lateinit var prefs: DriverPreferences
+    private var windowManager: WindowManager? = null
+    private var activeOverlayView: LinearLayout? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var lastOfferSignature: String = ""
+    private var lastOfferTimestamp: Long = 0L
+
+    companion object {
+        private const val TAG = "OptimizedOfferEngine"
+        private const val OVERLAY_DURATION_MS = 9000L
+
+        val PACKAGE_PLATFORM_MAP = mapOf(
+            "com.ubercab.driver" to "UBER",
+            "com.ubercab.eats" to "UBER_EATS",
+            "me.lyft.driver" to "LYFT",
+            "com.hich.driver" to "HICH",
+            "com.doordash.driverapp" to "DOORDASH",
+            "com.grubhub.driver" to "GRUBHUB"
+        )
+
+        private val PAYOUT_REGEX = Regex("""\$\s*(\d{1,4}(?:\.\d{1,2})?)""")
+        private val MINUTES_REGEX = Regex("""(\d{1,3})\s*(?:min|mins|minute|minutes)\b""", RegexOption.IGNORE_CASE)
+        private val HOURS_MINUTES_REGEX = Regex("""(\d+)\s*hr\s*(\d+)\s*min""", RegexOption.IGNORE_CASE)
+        private val MILES_REGEX = Regex("""(\d{1,4}(?:\.\d{1,2})?)\s*(?:mi|mile|miles)\b""", RegexOption.IGNORE_CASE)
     }
 
-    fun evaluateNode(node: AccessibilityNodeInfo): Metrics? {
-        val metrics = findAndParseOffer(node) ?: return null
-        metrics.isGoodOffer = metrics.fare >= minPayout || metrics.hourlyRate >= targetHourlyRate
-        return metrics
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        prefs = DriverPreferences(this)
+        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        Log.i(TAG, "Driverade v3.60 OptimizedOfferEngine connected.")
     }
 
-    private fun findAndParseOffer(node: AccessibilityNodeInfo): Metrics? {
-        var topMiddleFare = -1.0
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event == null) return
+        val pkgName = event.packageName?.toString() ?: return
 
-        fun parseTopMiddle(current: AccessibilityNodeInfo) {
-            val text = listOfNotNull(
-                current.text?.toString(),
-                current.contentDescription?.toString()
-            ).joinToString(" ")
-            if (text.contains("$") && text.any { it.isDigit() }) {
-                val rect = Rect()
-                current.getBoundsInScreen(rect)
-                if (rect.top >= 0 && rect.top <= 240 && rect.width() > 0 && rect.height() > 0) {
-                    extractCurrencyAmount(text)?.let {
-                        if (it >= 0.0 && it < 10000.0) topMiddleFare = it
+        val platform = resolvePlatform(pkgName) ?: return
+        if (!prefs.isPlatformEnabled(platform)) return
+
+        val collectedNodes = LinkedHashSet<String>()
+
+        event.source?.let { src ->
+            traverseNodeTree(src, collectedNodes, 0)
+        }
+
+        rootInActiveWindow?.let { root ->
+            traverseNodeTree(root, collectedNodes, 0)
+        }
+
+        try {
+            windows?.forEach { windowInfo ->
+                windowInfo.root?.let { winRoot ->
+                    val winPkg = winRoot.packageName?.toString() ?: pkgName
+                    if (resolvePlatform(winPkg) != null) {
+                        traverseNodeTree(winRoot, collectedNodes, 0)
                     }
                 }
             }
-            for (i in 0 until current.childCount) {
-                current.getChild(i)?.let { child: AccessibilityNodeInfo ->
-                    try { parseTopMiddle(child) } finally { child.recycle() }
-                }
-            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Multi-window inspection fallback: ${e.message}")
         }
-        fun traverse(current: AccessibilityNodeInfo): Metrics? {
-            val text = current.text?.toString() ?: ""
-            val desc = current.contentDescription?.toString() ?: ""
-            val combined = "$text $desc"
 
-            val hasCurrency = combined.contains("$")
-            val hasTripKeywords = combined.contains("min", ignoreCase = true) ||
-                                  combined.contains("mi", ignoreCase = true) ||
-                                  combined.contains("/hr", ignoreCase = true) ||
-                                  combined.contains("trip", ignoreCase = true) ||
-                                  combined.contains("ride", ignoreCase = true) ||
-                                  combined.contains("offer", ignoreCase = true)
+        if (collectedNodes.isEmpty()) return
 
-            if (hasCurrency && (hasTripKeywords || combined.contains("accept", ignoreCase = true))) {
-                val metrics = Metrics(isRideOffer = true)
-                parseMetrics(current, metrics)
-                if (metrics.fare > 0.0 || metrics.hourlyRate > 0.0) {
-                    return metrics
-                }
-            }
+        val rawList = collectedNodes.toList()
+        val evaluation = parseOfferNodes(platform, pkgName, rawList) ?: return
 
-            for (i in 0 until current.childCount) {
-                current.getChild(i)?.let { child: AccessibilityNodeInfo ->
-                    try {
-                        val result = traverse(child)
-                        if (result != null) return result
-                    } finally {
-                        child.recycle()
-                    }
-                }
-            }
-            return null
+        val signature = "${evaluation.platform}_${evaluation.payout}_${evaluation.totalMinutes}_${evaluation.totalMiles}"
+        val now = System.currentTimeMillis()
+        if (signature == lastOfferSignature && (now - lastOfferTimestamp) < 4000L) {
+            return
         }
-        traverse(node)?.let { return it }
+        lastOfferSignature = signature
+        lastOfferTimestamp = now
 
-        parseTopMiddle(node)
-        if (topMiddleFare >= 0.0) {
-            return Metrics(fare = topMiddleFare, hourlyRate = 0.0, isAuthoritativeMapTotal = true)
-        }
-        return null
+        DriveradeState.recordOffer(evaluation)
+        LoggerService.recordOfferDiagnostic(this, prefs, evaluation)
+        broadcastToAndroidAuto(evaluation)
+        showHourlyRateOverlay(evaluation)
     }
 
-    private fun parseMetrics(cardNode: AccessibilityNodeInfo, metrics: Metrics) {
-        val signatureParts = mutableListOf<String>()
-        val durationMinutes = mutableSetOf<Double>()
-
-        fun extract(current: AccessibilityNodeInfo) {
-            val text = listOfNotNull(
-                current.text?.toString(),
-                current.contentDescription?.toString()
-            ).joinToString(" ")
-            if (text.isNotBlank()) {
-                signatureParts.add(text.trim())
-                Regex("""(\d+(?:\.\d+)?)\s*(?:mins?|minutes?)\b""", RegexOption.IGNORE_CASE)
-                    .findAll(text)
-                    .mapNotNull { it.groupValues[1].toDoubleOrNull() }
-                    .filter { it > 0.0 }
-                    .forEach { durationMinutes.add(it) }
-            }
-            if (text.contains("$") && !text.contains("/hr", ignoreCase = true) && metrics.fare == 0.0) {
-                extractCurrencyAmount(text)?.let { metrics.fare = it }
-            }
-            if (text.contains("/hr", ignoreCase = true)) {
-                val ratePart = text.substringBefore("/hr").substringBefore("for")
-                val rate = extractCurrencyAmount(ratePart)
-                    ?: Regex("""\d+(?:\.\d+)?""").find(ratePart)?.value?.toDoubleOrNull()
-                if (rate != null && rate > 0.0 && metrics.hourlyRate == 0.0) {
-                    metrics.hourlyRate = rate
-                }
-            }
-            for (i in 0 until current.childCount) {
-                current.getChild(i)?.let { child: AccessibilityNodeInfo ->
-                    try { extract(child) } finally { child.recycle() }
-                }
-            }
+    private fun resolvePlatform(packageName: String): String? {
+        PACKAGE_PLATFORM_MAP[packageName]?.let { return it }
+        val lower = packageName.lowercase(Locale.US)
+        return when {
+            lower.contains("ubercab") -> "UBER"
+            lower.contains("lyft") -> "LYFT"
+            lower.contains("hich") -> "HICH"
+            lower.contains("doordash") -> "DOORDASH"
+            lower.contains("grubhub") -> "GRUBHUB"
+            else -> null
         }
-        extract(cardNode)
-        val totalMinutes = durationMinutes.sum()
-        if (metrics.hourlyRate == 0.0 && metrics.fare > 0.0 && totalMinutes > 0.0) {
-            metrics.hourlyRate = metrics.fare * 60.0 / totalMinutes
-        }
-        metrics.signature = signatureParts.joinToString(" ").replace(Regex("\\s+"), " ").take(512)
     }
 
-    private fun extractCurrencyAmount(text: String): Double? {
-        val amount = Regex("""\$\s*([0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?)""")
-            .find(text)
-            ?.groupValues
-            ?.get(1)
-            ?: return null
-        return amount.replace(",", "").toDoubleOrNull()
+    private fun traverseNodeTree(
+        node: AccessibilityNodeInfo?,
+        results: MutableSet<String>,
+        depth: Int
+    ) {
+        if (node == null || depth > 28) return
+
+        node.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { results.add(it) }
+        node.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { results.add(it) }
+
+        val count = node.childCount
+        for (i in 0 until count) {
+            val child = try {
+                node.getChild(i)
+            } catch (e: Exception) {
+                null
+            }
+            if (child != null) {
+                traverseNodeTree(child, results, depth + 1)
+            }
+        }
+    }
+
+    fun parseOfferNodes(
+        platform: String,
+        packageName: String,
+        texts: List<String>
+    ): OfferEvaluation? {
+        var payout = -1.0
+        var totalMinutes = 0.0
+        var totalMiles = 0.0
+
+        val joined = texts.joinToString(" | ")
+
+        for (entry in texts) {
+            if (entry.contains("/hr", ignoreCase = true) || entry.contains("per hour", ignoreCase = true)) {
+                continue
+            }
+            PAYOUT_REGEX.findAll(entry).forEach { match ->
+                val value = match.groupValues[1].toDoubleOrNull() ?: -1.0
+                if (value in 2.0..500.0 && value > payout) {
+                    payout = value
+                }
+            }
+        }
+
+        HOURS_MINUTES_REGEX.findAll(joined).forEach { match ->
+            val hrs = match.groupValues[1].toDoubleOrNull() ?: 0.0
+            val mins = match.groupValues[2].toDoubleOrNull() ?: 0.0
+            totalMinutes += (hrs * 60.0) + mins
+        }
+
+        if (totalMinutes == 0.0) {
+            MINUTES_REGEX.findAll(joined).forEach { match ->
+                val mins = match.groupValues[1].toDoubleOrNull() ?: 0.0
+                if (mins in 1.0..300.0) {
+                    totalMinutes += mins
+                }
+            }
+        }
+
+        MILES_REGEX.findAll(joined).forEach { match ->
+            val mi = match.groupValues[1].toDoubleOrNull() ?: 0.0
+            if (mi in 0.1..500.0) {
+                totalMiles += mi
+            }
+        }
+
+        if (payout <= 0.0) return null
+
+        val effectiveMinutes = if (totalMinutes > 0.0) totalMinutes else 15.0
+        val hourlyRate = (payout / effectiveMinutes) * 60.0
+        val dollarsPerMile = if (totalMiles > 0.0) payout / totalMiles else 0.0
+
+        val meetsTarget = hourlyRate >= prefs.targetHourlyRate && payout >= prefs.minPayout
+
+        return OfferEvaluation(
+            platform = platform,
+            packageName = packageName,
+            payout = payout,
+            totalMiles = totalMiles,
+            totalMinutes = effectiveMinutes,
+            hourlyRate = hourlyRate,
+            dollarsPerMile = dollarsPerMile,
+            meetsTarget = meetsTarget,
+            rawNodes = texts
+        )
+    }
+
+    private fun showHourlyRateOverlay(evaluation: OfferEvaluation) {
+        if (!Settings.canDrawOverlays(this)) {
+            Log.w(TAG, "SYSTEM_ALERT_WINDOW permission not granted.")
+            return
+        }
+
+        mainHandler.post {
+            dismissOverlay()
+
+            val container = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(36, 24, 36, 24)
+                background = GradientDrawable().apply {
+                    cornerRadius = 28f
+                    setColor(if (evaluation.meetsTarget) Color.parseColor("#E6115E38") else Color.parseColor("#E67F1D1D"))
+                    setStroke(4, if (evaluation.meetsTarget) Color.parseColor("#34D399") else Color.parseColor("#F87171"))
+                }
+            }
+
+            val titleView = TextView(this).apply {
+                text = String.format(
+                    Locale.US,
+                    "%s • $%.2f/hr",
+                    evaluation.platform,
+                    evaluation.hourlyRate
+                )
+                setTextColor(Color.WHITE)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+                paint.isFakeBoldText = true
+            }
+
+            val detailView = TextView(this).apply {
+                text = String.format(
+                    Locale.US,
+                    "Payout: $%.2f  |  %.1f mi  |  %.0f min ($%.2f/mi)",
+                    evaluation.payout,
+                    evaluation.totalMiles,
+                    evaluation.totalMinutes,
+                    evaluation.dollarsPerMile
+                )
+                setTextColor(Color.parseColor("#E5E7EB"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            }
+
+            container.addView(titleView)
+            container.addView(detailView)
+            container.setOnClickListener { dismissOverlay() }
+
+            val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            } else {
+                @Suppress("DEPRECATION")
+                WindowManager.LayoutParams.TYPE_PHONE
+            }
+
+            val params = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                layoutType,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+                PixelFormat.TRANSLUCENT
+            ).apply {
+                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                y = 140
+            }
+
+            try {
+                windowManager?.addView(container, params)
+                activeOverlayView = container
+                mainHandler.postDelayed({ dismissOverlay() }, OVERLAY_DURATION_MS)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to render hourly rate overlay", e)
+            }
+        }
+    }
+
+    private fun dismissOverlay() {
+        activeOverlayView?.let { view ->
+            try {
+                windowManager?.removeView(view)
+            } catch (_: Exception) {
+            }
+            activeOverlayView = null
+        }
+    }
+
+    private fun broadcastToAndroidAuto(evaluation: OfferEvaluation) {
+        val intent = Intent(this, AndroidAutoReceiver::class.java).apply {
+            action = "com.driverade.ACTION_OFFER_EVALUATED"
+            putExtra("platform", evaluation.platform)
+            putExtra("payout", evaluation.payout)
+            putExtra("hourly_rate", evaluation.hourlyRate)
+            putExtra("meets_target", evaluation.meetsTarget)
+        }
+        sendBroadcast(intent)
+    }
+
+    override fun onInterrupt() {
+        dismissOverlay()
+    }
+
+    override fun onDestroy() {
+        dismissOverlay()
+        super.onDestroy()
     }
 }

@@ -1,334 +1,118 @@
 package com.driverade.service
 
-import android.accessibilityservice.AccessibilityService
-import android.accessibilityservice.AccessibilityServiceInfo
+import android.app.Service
+import android.content.Context
 import android.content.Intent
-import android.graphics.Color
-import android.graphics.PixelFormat
-import android.graphics.drawable.GradientDrawable
-import android.os.Handler
-import android.os.Looper
+import android.os.IBinder
 import android.util.Log
-import android.view.Gravity
-import android.view.WindowManager
-import android.view.accessibility.AccessibilityEvent
-import android.view.accessibility.AccessibilityNodeInfo
-import android.widget.FrameLayout
-import android.widget.TextView
+import androidx.core.content.FileProvider
 import com.driverade.data.DriverPreferences
+import java.io.File
+import java.io.FileWriter
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
-class LoggerService : AccessibilityService() {
+class LoggerService : Service() {
+
+    override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
-        private const val TAG = "DriveradeLogger"
-        private const val HICH_PACKAGE = "com.hich.driver"
-        private const val FLASH_DURATION_MS = 500L
-        private const val PILL_DURATION_MS = 3_000L
-    }
+        private const val TAG = "LoggerService"
+        const val DIAGNOSTICS_FILENAME = "driverade_diagnostics.txt"
+        private const val SUPPORT_EMAIL = "adodgerwho@gmail.com"
 
-    private lateinit var prefs: DriverPreferences
-    private lateinit var engine: OptimizedOfferEngine
-    private val handler = Handler(Looper.getMainLooper())
-    private var pendingEventScan: Runnable? = null
-    private var overlay: FrameLayout? = null
-    private var overlayFlashReset: Runnable? = null
-    private var overlayRemoval: Runnable? = null
-    private var lastOfferKey: String? = null
-    private var lastLoggedOfferKey: String? = null
-    private var lastAcceptedOfferKey: String? = null
-    private var lastAlertedOfferKey: String? = null
-    private var lastHichSwitchOfferKey: String? = null
+        fun getDiagnosticsFile(context: Context): File =
+            File(context.filesDir, DIAGNOSTICS_FILENAME)
 
-    private val pollingScan = object : Runnable {
-        override fun run() {
-            scanActiveWindow()
-            handler.postDelayed(this, prefs.customPollingMs)
+        fun ensureDiagnosticsHeader(context: Context, prefs: DriverPreferences): File {
+            val file = getDiagnosticsFile(context)
+            if (!file.exists() || file.length() == 0L) {
+                writeDiagnosticsSnapshot(context, prefs, emptyList())
+            }
+            return file
         }
-    }
 
-    override fun onCreate() {
-        super.onCreate()
-        prefs = DriverPreferences(this)
-        engine = OptimizedOfferEngine(prefs.targetRate, prefs.minPayout)
-    }
-
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        pendingEventScan?.let { handler.removeCallbacks(it) }
-        val scan = Runnable { scanActiveWindow() }
-        pendingEventScan = scan
-        handler.postDelayed(scan, prefs.customDebounceMs)
-    }
-
-    private fun scanActiveWindow() {
-        val root = rootInActiveWindow
-        if (root == null) {
-            clearOfferTracking()
-            return
-        }
-        try {
-            val packageName = root.packageName?.toString() ?: ""
-            val isUber = packageName.contains("uber", ignoreCase = true)
-            val isLyft = packageName.contains("lyft", ignoreCase = true)
-            val isHich = packageName.contains("hich", ignoreCase = true)
-            val appTag = when {
-                isUber -> "UBER"
-                isLyft -> "LYFT"
-                isHich -> "HICH"
-                else -> "OTHER"
-            }
-            val rootText = dumpText(root)
-
-            val isOnline = rootText.contains("You're online", ignoreCase = true) ||
-                rootText.contains("Finding trips", ignoreCase = true) ||
-                rootText.contains("Searching", ignoreCase = true) ||
-                rootText.contains("Waiting", ignoreCase = true) ||
-                rootText.contains("GO OFFLINE", ignoreCase = true)
-
-            if (isOnline && (isUber || isLyft || isHich) &&
-                DriveradeState.currentMode == DriveradeState.OperatingMode.OFF
-            ) {
-                DriveradeState.updateOperatingMode(DriveradeState.OperatingMode.ALERT_AND_LOGGER)
-                prefs.onModeChanged(isActive = true)
-            }
-
-            if (DriveradeState.currentMode == DriveradeState.OperatingMode.OFF) {
-                clearOfferTracking()
-                return
-            }
-
-            engine.updateThresholds(prefs.targetRate, prefs.minPayout)
-            val metrics = engine.evaluateNode(root)
-            if (metrics == null) {
-                clearOfferTracking()
-                return
-            }
-            if (metrics.isAuthoritativeMapTotal) {
-                if (appTag != "OTHER") {
-                    if (prefs.handleMapTotalUpdate(metrics.fare, appTag)) {
-                        DriveradeState.notifyStatsChanged()
-                    }
-                }
-                clearOfferTracking()
-                return
-            }
-            if (!metrics.isRideOffer || (metrics.fare <= 0.0 && metrics.hourlyRate <= 0.0)) {
-                clearOfferTracking()
-                return
-            }
-
-            val offerKey = buildOfferKey(appTag, metrics)
-            val isNewOffer = offerKey != lastOfferKey
-            if (isNewOffer) {
-                lastOfferKey = offerKey
-                lastLoggedOfferKey = null
-                lastAcceptedOfferKey = null
-                lastAlertedOfferKey = null
-                lastHichSwitchOfferKey = null
-            }
-
-            val mode = DriveradeState.currentMode
-            val alertEnabled = mode == DriveradeState.OperatingMode.ALERT_ONLY ||
-                mode == DriveradeState.OperatingMode.ALERT_AND_LOGGER
-            val loggerEnabled = mode == DriveradeState.OperatingMode.LOGGER_ONLY ||
-                mode == DriveradeState.OperatingMode.ALERT_AND_LOGGER
-
-            if (prefs.autoSwitchToHich && (isUber || isLyft) && lastHichSwitchOfferKey != offerKey) {
-                launchHich()
-                lastHichSwitchOfferKey = offerKey
-            }
-            if (alertEnabled && lastAlertedOfferKey != offerKey) {
-                showOfferPill(metrics.hourlyRate, metrics.isGoodOffer)
-                lastAlertedOfferKey = offerKey
-            }
-            if (!loggerEnabled) return
-
-            val isAccepted = rootText.contains("Accepted", ignoreCase = true) ||
-                rootText.contains("En Route", ignoreCase = true) ||
-                rootText.contains("Picked Up", ignoreCase = true)
-
-            if (lastLoggedOfferKey != offerKey) {
-                lastLoggedOfferKey = offerKey
-                lastAcceptedOfferKey = if (isAccepted) offerKey else null
-                prefs.recordOffer(
-                    fare = metrics.fare,
-                    isGood = metrics.isGoodOffer,
-                    autoAddEarnings = isAccepted && prefs.getLastSeenMapTotal(appTag) < 0.0,
-                    isAccepted = isAccepted,
-                    appTag = appTag,
-                    hourlyRate = metrics.hourlyRate
-                )
-                DriveradeState.notifyStatsChanged()
-            } else if (isAccepted && lastAcceptedOfferKey != offerKey) {
-                lastAcceptedOfferKey = offerKey
-                prefs.recordOffer(
-                    fare = metrics.fare,
-                    isGood = metrics.isGoodOffer,
-                    autoAddEarnings = prefs.getLastSeenMapTotal(appTag) < 0.0,
-                    isAccepted = true,
-                    appTag = appTag,
-                    hourlyRate = metrics.hourlyRate,
-                    countAsNewOffer = false
-                )
-                DriveradeState.notifyStatsChanged()
-            }
-        } finally {
-            root.recycle()
-        }
-    }
-
-    private fun launchHich() {
-        val launchIntent = packageManager.getLaunchIntentForPackage(HICH_PACKAGE)
-        if (launchIntent == null) {
-            Log.w(TAG, "Hich app is not installed or has no launch activity: $HICH_PACKAGE")
-            return
-        }
-        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        try {
-            startActivity(launchIntent)
-        } catch (e: Exception) {
-            Log.e(TAG, "Unable to open Hich", e)
-        }
-    }
-
-    private fun buildOfferKey(appTag: String, metrics: OptimizedOfferEngine.Metrics): String {
-        val stableText = metrics.signature
-            .replace(Regex("""\b(?:accept(?:ed)?|en route|picked up)\b""", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("""\b\d+\s*(?:secs?|seconds?)\b""", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("\\s+"), " ")
-            .trim()
-        return "$appTag|${metrics.fare}|${metrics.hourlyRate}|$stableText"
-    }
-
-    private fun clearOfferTracking() {
-        lastOfferKey = null
-        lastLoggedOfferKey = null
-        lastAcceptedOfferKey = null
-        lastAlertedOfferKey = null
-        lastHichSwitchOfferKey = null
-    }
-
-    private fun showOfferPill(hourlyRate: Double, isGoodOffer: Boolean) {
-        removeOfferOverlay()
-
-        val flashColor = if (isGoodOffer) Color.rgb(0, 170, 80) else Color.rgb(220, 30, 45)
-        val density = resources.displayMetrics.density
-        val root = FrameLayout(this).apply {
-            setBackgroundColor((flashColor and 0x00FFFFFF) or 0x44000000)
-        }
-        val pillLines = mutableListOf<String>()
-        if (prefs.showHourlyOnPill) {
-            pillLines.add(
-                if (hourlyRate > 0.0) String.format(Locale.US, "$%.2f/hr", hourlyRate)
-                else "Hourly rate unavailable"
-            )
-        }
-        if (prefs.showEarningsOnPill) {
-            pillLines.add(String.format(Locale.US, "Today $%.2f", prefs.todayEarnings))
-        }
-        if (pillLines.isEmpty()) pillLines.add(if (isGoodOffer) "GOOD OFFER" else "BELOW THRESHOLD")
-        val pill = TextView(this).apply {
-            text = pillLines.joinToString("  •  ")
-            textSize = 16f
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-            setPadding((18 * density).toInt(), (10 * density).toInt(), (18 * density).toInt(), (10 * density).toInt())
-            background = GradientDrawable().apply {
-                cornerRadius = 32 * density
-                setColor(if (isGoodOffer) Color.rgb(35, 145, 85) else Color.rgb(190, 45, 50))
-            }
-        }
-        root.addView(
-            pill,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            ).apply {
-                topMargin = (48 * density).toInt()
-            }
-        )
-
-        val windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-        val layoutParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        )
-        try {
-            windowManager.addView(root, layoutParams)
-            overlay = root
-            val resetFlash = Runnable { root.setBackgroundColor(Color.TRANSPARENT) }
-            val removeOverlay = Runnable { removeOfferOverlay() }
-            overlayFlashReset = resetFlash
-            overlayRemoval = removeOverlay
-            handler.postDelayed(resetFlash, FLASH_DURATION_MS)
-            handler.postDelayed(removeOverlay, PILL_DURATION_MS)
-        } catch (e: Exception) {
-            Log.e(TAG, "Unable to display offer alert", e)
-        }
-    }
-
-    private fun removeOfferOverlay() {
-        overlayFlashReset?.let { handler.removeCallbacks(it) }
-        overlayRemoval?.let { handler.removeCallbacks(it) }
-        overlayFlashReset = null
-        overlayRemoval = null
-        overlay?.let {
+        fun writeDiagnosticsSnapshot(
+            context: Context,
+            prefs: DriverPreferences,
+            capturedOffers: List<OfferEvaluation>
+        ): File {
+            val file = getDiagnosticsFile(context)
+            val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
             try {
-                (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it)
-            } catch (e: IllegalArgumentException) {
-                Log.w(TAG, "Offer alert overlay was already removed", e)
-            }
-        }
-        overlay = null
-    }
-
-    private fun dumpText(node: AccessibilityNodeInfo): String {
-        val sb = StringBuilder()
-        fun traverse(curr: AccessibilityNodeInfo) {
-            curr.text?.toString()?.let { sb.append(it).append(" ") }
-            curr.contentDescription?.toString()?.let { sb.append(it).append(" ") }
-            for (i in 0 until curr.childCount) {
-                curr.getChild(i)?.let { child ->
-                    try {
-                        traverse(child)
-                    } finally {
-                        child.recycle()
+                FileWriter(file, false).use { writer ->
+                    writer.append("Driverade Diagnostics - $timestamp\n")
+                    writer.append("Version: 3.60\n")
+                    writer.append("Target Rate: $${prefs.targetHourlyRate}\n")
+                    writer.append("Min Payout: $${prefs.minPayout}\n")
+                    writer.append("Today Earnings: $${prefs.todayEarnings}\n")
+                    writer.append("Today Active Hours: ${prefs.todayActiveHours}\n")
+                    writer.append("UBER Map Total: ${DriveradeState.uberMapTotal}\n")
+                    writer.append("LYFT Map Total: ${DriveradeState.lyftMapTotal}\n")
+                    writer.append("HICH Map Total: ${DriveradeState.hichMapTotal}\n\n")
+                    writer.append("Offer Diagnostics:\n")
+                    for (offer in capturedOffers) {
+                        writer.append(formatOfferEntry(offer))
                     }
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed writing diagnostics header", e)
+            }
+            return file
+        }
+
+        fun recordOfferDiagnostic(
+            context: Context,
+            prefs: DriverPreferences,
+            offer: OfferEvaluation
+        ) {
+            val file = ensureDiagnosticsHeader(context, prefs)
+            try {
+                FileWriter(file, true).use { writer ->
+                    writer.append(formatOfferEntry(offer))
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed appending offer diagnostic", e)
             }
         }
-        traverse(node)
-        return sb.toString()
-    }
 
-    override fun onInterrupt() {}
-
-    override fun onServiceConnected() {
-        super.onServiceConnected()
-        serviceInfo = serviceInfo.apply {
-            eventTypes = AccessibilityEvent.TYPES_ALL_MASK
-            feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
-            flags = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
-                AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
+        private fun formatOfferEntry(offer: OfferEvaluation): String {
+            val time = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(offer.timestamp))
+            return buildString {
+                append("[$time] Platform=${offer.platform} (${offer.packageName}) | ")
+                append(String.format(Locale.US, "Payout=$%.2f | Rate=$%.2f/hr | ", offer.payout, offer.hourlyRate))
+                append(String.format(Locale.US, "Miles=%.1f | Minutes=%.0f | TargetMet=%b\n", offer.totalMiles, offer.totalMinutes, offer.meetsTarget))
+                append("  RawNodes: ${offer.rawNodes.joinToString(" :: ")}\n")
+            }
         }
-        handler.removeCallbacks(pollingScan)
-        handler.postDelayed(pollingScan, prefs.customPollingMs)
-    }
 
-    override fun onDestroy() {
-        handler.removeCallbacks(pollingScan)
-        pendingEventScan?.let { handler.removeCallbacks(it) }
-        removeOfferOverlay()
-        if (DriveradeState.currentMode != DriveradeState.OperatingMode.OFF) {
-            prefs.onModeChanged(isActive = false)
-            DriveradeState.updateOperatingMode(DriveradeState.OperatingMode.OFF)
+        fun createBugReportEmailIntent(
+            context: Context,
+            prefs: DriverPreferences,
+            userFeedback: String
+        ): Intent {
+            val diagFile = ensureDiagnosticsHeader(context, prefs)
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                diagFile
+            )
+            val body = buildString {
+                append("Driver Feedback:\n")
+                append(userFeedback.ifBlank { "(No custom note entered)" })
+                append("\n\n--- Inline Diagnostics Preview ---\n")
+                append(runCatching { diagFile.readText() }.getOrDefault("Unable to read log file."))
+            }
+
+            return Intent(Intent.ACTION_SEND).apply {
+                type = "message/rfc822"
+                putExtra(Intent.EXTRA_EMAIL, arrayOf(SUPPORT_EMAIL))
+                putExtra(Intent.EXTRA_SUBJECT, "Driverade v3.60 Bug Report & Diagnostics")
+                putExtra(Intent.EXTRA_TEXT, body)
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
         }
-        super.onDestroy()
     }
 }
