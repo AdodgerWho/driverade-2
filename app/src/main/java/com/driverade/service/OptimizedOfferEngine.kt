@@ -53,15 +53,28 @@ class OptimizedOfferEngine : AccessibilityService() {
         super.onServiceConnected()
         prefs = DriverPreferences(this)
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-        Log.i(TAG, "Driverade OptimizedOfferEngine connected.")
+        InternalDiagnosticsLogger.initializeSession(this, prefs)
+        InternalDiagnosticsLogger.logInteraction(this, "SERVICE", "OptimizedOfferEngine connected successfully.")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
-        val pkgName = event.packageName?.toString() ?: return
+        val pkgName = event.packageName?.toString() ?: "unknown.package"
 
-        val platform = resolvePlatform(pkgName) ?: return
-        if (!prefs.isPlatformEnabled(platform)) return
+        InternalDiagnosticsLogger.logInteraction(this, "EVENT_INGEST", "Received accessibility event from package: $pkgName (Type: ${event.eventType})")
+
+        val platform = resolvePlatform(pkgName)
+        if (platform == null) {
+            InternalDiagnosticsLogger.logInteraction(this, "FILTER_DROP", "Package $pkgName not recognized as target platform.")
+            return
+        }
+
+        if (!prefs.isPlatformEnabled(platform)) {
+            InternalDiagnosticsLogger.logInteraction(this, "FILTER_DROP", "Platform $platform is toggled OFF in driver preferences.")
+            return
+        }
+
+        InternalDiagnosticsLogger.logInteraction(this, "PLATFORM_MATCH", "Matched active platform: $platform")
 
         val collectedNodes = LinkedHashSet<String>()
 
@@ -83,27 +96,37 @@ class OptimizedOfferEngine : AccessibilityService() {
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Multi-window inspection fallback: ${e.message}")
+            InternalDiagnosticsLogger.logInteraction(this, "WARN", "Multi-window inspection warning: ${e.message}")
         }
 
-        if (collectedNodes.isEmpty()) return
+        InternalDiagnosticsLogger.logInteraction(this, "NODE_SCRAPE", "Collected ${collectedNodes.size} unique nodes from window hierarchy.")
+
+        if (collectedNodes.isEmpty()) {
+            InternalDiagnosticsLogger.logInteraction(this, "PARSE_ABORT", "No text nodes found to evaluate.")
+            return
+        }
 
         val rawList = collectedNodes.toList()
-        val evaluation = parseOfferNodes(platform, pkgName, rawList) ?: return
+        val evaluation = parseOfferNodes(platform, pkgName, rawList)
+        
+        if (evaluation == null) {
+            InternalDiagnosticsLogger.logInteraction(this, "PARSE_FAIL", "Nodes scraped but regex rejected. Sample nodes: ${rawList.take(5)}")
+            return
+        }
 
         val signature = "${evaluation.platform}_${evaluation.payout}_${evaluation.totalMinutes}_${evaluation.totalMiles}"
         val now = System.currentTimeMillis()
         if (signature == lastOfferSignature && (now - lastOfferTimestamp) < 4000L) {
+            InternalDiagnosticsLogger.logInteraction(this, "DEBOUNCE", "Duplicate offer suppressed within 4s window.")
             return
         }
         lastOfferSignature = signature
         lastOfferTimestamp = now
 
+        InternalDiagnosticsLogger.logInteraction(this, "SUCCESS", "Offer evaluated: Payout=$${evaluation.payout}, Hourly=$${evaluation.hourlyRate}/hr, TargetMet=${evaluation.meetsTarget}")
+
         DriveradeState.recordOffer(evaluation)
-        
-        // Reconciled method call to LoggerService
         LoggerService.recordOfferDiagnostic(this, prefs, evaluation)
-        
         broadcastToAndroidAuto(evaluation)
         showHourlyRateOverlay(evaluation)
     }
@@ -212,7 +235,7 @@ class OptimizedOfferEngine : AccessibilityService() {
 
     private fun showHourlyRateOverlay(evaluation: OfferEvaluation) {
         if (!Settings.canDrawOverlays(this)) {
-            Log.w(TAG, "SYSTEM_ALERT_WINDOW permission not granted.")
+            InternalDiagnosticsLogger.logInteraction(this, "OVERLAY_FAIL", "SYSTEM_ALERT_WINDOW permission not granted.")
             return
         }
 
@@ -281,9 +304,10 @@ class OptimizedOfferEngine : AccessibilityService() {
             try {
                 windowManager?.addView(container, params)
                 activeOverlayView = container
+                InternalDiagnosticsLogger.logInteraction(this, "OVERLAY_SHOWN", "Rendered banner for ${evaluation.platform}")
                 mainHandler.postDelayed({ dismissOverlay() }, OVERLAY_DURATION_MS)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to render hourly rate overlay", e)
+                InternalDiagnosticsLogger.logInteraction(this, "OVERLAY_ERROR", "Failed to render overlay: ${e.message}")
             }
         }
     }
@@ -307,14 +331,17 @@ class OptimizedOfferEngine : AccessibilityService() {
             putExtra("meets_target", evaluation.meetsTarget)
         }
         sendBroadcast(intent)
+        InternalDiagnosticsLogger.logInteraction(this, "ANDROID_AUTO", "Broadcast telemetry dispatched for ${evaluation.platform}")
     }
 
     override fun onInterrupt() {
         dismissOverlay()
+        InternalDiagnosticsLogger.logInteraction(this, "SERVICE", "OptimizedOfferEngine interrupted.")
     }
 
     override fun onDestroy() {
         dismissOverlay()
+        InternalDiagnosticsLogger.logInteraction(this, "SERVICE", "OptimizedOfferEngine destroyed.")
         super.onDestroy()
     }
 }
