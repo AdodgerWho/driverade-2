@@ -1,42 +1,30 @@
-name: Build Android APK
+name: Android CI Build v3.62
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ "main" ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Clean legacy conflicting files
-      run: |
-        rm -rf build.gradle settings.gradle app/build.gradle
-        rm -rf app/src/main/java/com/example
-        rm -rf DriverLogger
-
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: '17'
-
-    - name: Setup Gradle 8.7
-      uses: gradle/actions/setup-gradle@v3
-      with:
-        gradle-version: '8.7'
-
-    - name: Build Debug APK
-      run: gradle assembleDebug --stacktrace
-
-    - name: Upload APK Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: driverade-debug-apk
-        path: app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: driverade-v3.62-debug
+          path: app/build/outputs/apk/debug/*.apk
