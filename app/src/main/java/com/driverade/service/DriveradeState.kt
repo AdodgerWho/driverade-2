@@ -6,10 +6,15 @@ import kotlinx.coroutines.flow.asStateFlow
 
 data class OfferEvaluation(
     val platform: String,
+    val packageName: String,
     val payout: Double,
+    val totalMiles: Double,
+    val totalMinutes: Double,
     val hourlyRate: Double,
+    val dollarsPerMile: Double,
     val meetsTarget: Boolean,
-    val rawNodes: List<String>
+    val rawNodes: List<String>,
+    val timestamp: Long = System.currentTimeMillis()
 )
 
 object DriveradeState {
@@ -19,4 +24,6 @@ object DriveradeState {
     fun recordOffer(evaluation: OfferEvaluation) {
         _latestOffer.value = evaluation
     }
+
+    fun getRollingGridDensity(): Map<String, Int> = emptyMap()
 }
