@@ -32,7 +32,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:text="Your driving command center"
+                android:text="Drive smarter. Stay in control."
                 android:textColor="#CBD5E1"
                 android:textSize="13sp" />
 
@@ -78,37 +78,49 @@
             android:layout_marginTop="14dp"
             android:orientation="horizontal">
 
-            <Button
+            <TextView
                 android:allCaps="false"
                 android:textSize="13sp"
                 android:minHeight="48dp"
                 android:paddingHorizontal="0dp"
                 android:id="@+id/navBtnDashboard"
                 android:layout_width="0dp"
+                android:background="@drawable/bg_nav_inactive"
+                android:gravity="center"
+                android:textColor="#B8C9DE"
+                android:fontFamily="sans"
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="4dp"
                 android:layout_weight="1"
                 android:text="Home" />
 
-            <Button
+            <TextView
                 android:allCaps="false"
                 android:textSize="13sp"
                 android:minHeight="48dp"
                 android:paddingHorizontal="0dp"
                 android:id="@+id/navBtnHeatmaps"
                 android:layout_width="0dp"
+                android:background="@drawable/bg_nav_inactive"
+                android:gravity="center"
+                android:textColor="#B8C9DE"
+                android:fontFamily="sans"
                 android:layout_height="wrap_content"
                 android:layout_marginHorizontal="4dp"
                 android:layout_weight="1"
                 android:text="Insights" />
 
-            <Button
+            <TextView
                 android:allCaps="false"
                 android:textSize="13sp"
                 android:minHeight="48dp"
                 android:paddingHorizontal="0dp"
                 android:id="@+id/navBtnSettings"
                 android:layout_width="0dp"
+                android:background="@drawable/bg_nav_inactive"
+                android:gravity="center"
+                android:textColor="#B8C9DE"
+                android:fontFamily="sans"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="4dp"
                 android:layout_weight="1"
@@ -178,7 +190,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="TODAY’S OVERVIEW"
+                    android:text="TODAY AT A GLANCE"
                     android:textColor="#67E8F9"
                     android:textSize="12sp"
                     android:textStyle="bold" />
@@ -268,7 +280,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
-                    android:text="Awaiting Uber / Lyft / Hich Offer..."
+                    android:text="Waiting for your next offer"
                     android:textColor="#F8FAFC"
                     android:textSize="20sp"
                     android:textStyle="bold" />
@@ -278,7 +290,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="Overlay pops up automatically with $/hr calculation"
+                    android:text="Offer details appear here when detected"
                     android:textColor="#CBD5E1"
                     android:textSize="14sp" />
             </LinearLayout>
