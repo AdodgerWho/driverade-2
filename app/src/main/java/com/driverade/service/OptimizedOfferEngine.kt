@@ -9,7 +9,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
-import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.WindowManager
@@ -47,6 +46,7 @@ class OptimizedOfferEngine : AccessibilityService() {
         private val MINUTES_REGEX = Regex("""(\d{1,3})\s*(?:min|mins|minute|minutes)\b""", RegexOption.IGNORE_CASE)
         private val HOURS_MINUTES_REGEX = Regex("""(\d+)\s*hr\s*(\d+)\s*min""", RegexOption.IGNORE_CASE)
         private val MILES_REGEX = Regex("""(\d{1,4}(?:\.\d{1,2})?)\s*(?:mi|mile|miles)\b""", RegexOption.IGNORE_CASE)
+        private val OFFER_KEYWORDS = listOf("match", "trip", "ride", "offer", "accept")
     }
 
     override fun onServiceConnected() {
@@ -107,6 +107,14 @@ class OptimizedOfferEngine : AccessibilityService() {
         }
 
         val rawList = collectedNodes.toList()
+        val joinedTextLower = rawList.joinToString(" ").lowercase(Locale.US)
+        val hasValidKeyword = OFFER_KEYWORDS.any { joinedTextLower.contains(it) }
+
+        if (!hasValidKeyword) {
+            InternalDiagnosticsLogger.logInteraction(this, "KEYWORD_DROP", "Ignored: Missing mandatory offer validation keywords.")
+            return
+        }
+
         val evaluation = parseOfferNodes(platform, pkgName, rawList)
         
         if (evaluation == null) {
@@ -126,7 +134,6 @@ class OptimizedOfferEngine : AccessibilityService() {
         InternalDiagnosticsLogger.logInteraction(this, "SUCCESS", "Offer evaluated: Payout=$${evaluation.payout}, Hourly=$${evaluation.hourlyRate}/hr, TargetMet=${evaluation.meetsTarget}")
 
         DriveradeState.recordOffer(evaluation)
-        LoggerService.recordOfferDiagnostic(this, prefs, evaluation)
         broadcastToAndroidAuto(evaluation)
         showHourlyRateOverlay(evaluation)
     }
