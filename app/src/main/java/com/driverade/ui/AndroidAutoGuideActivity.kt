@@ -62,9 +62,9 @@ class AndroidAutoGuideActivity : Activity() {
         GuidedSettingsState.setActive(this, true)
     }
 
-    override fun onStop() {
-        GuidedSettingsState.setActive(this, false)
-        super.onStop()
+    override fun onDestroy() {
+        if (isFinishing) GuidedSettingsState.setActive(this, false)
+        super.onDestroy()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
