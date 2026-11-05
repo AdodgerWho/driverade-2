@@ -295,6 +295,64 @@
                     android:textSize="14sp" />
             </LinearLayout>
 
+            <Button
+                android:id="@+id/btnTestAlertPill"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="Test alert pill"
+                android:textAllCaps="false"
+                android:contentDescription="Show a sample offer alert overlay" />
+        </LinearLayout>
+
+        <!-- PAGE 2: HEATMAPS / DENSITY -->
+        <LinearLayout
+            android:id="@+id/sectionHeatmaps"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_dashboard_card"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Crowdsourced Density &amp; Market Heatmaps"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvHeatmapStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Rolling 5-Min Geohash Pool: Active"
+                android:textColor="#CBD5E1"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <!-- PAGE 3: SETTINGS & DIAGNOSTICS -->
+        <LinearLayout
+            android:id="@+id/sectionSettings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_dashboard_card"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="OFFER PREFERENCES"
+                android:textColor="#67E8F9"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -348,47 +406,15 @@
                     android:text="Choose platforms"
                     android:textAllCaps="false" />
             </LinearLayout>
-        </LinearLayout>
-
-        <!-- PAGE 2: HEATMAPS / DENSITY -->
-        <LinearLayout
-            android:id="@+id/sectionHeatmaps"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:background="@drawable/bg_dashboard_card"
-            android:orientation="vertical"
-            android:padding="16dp"
-            android:visibility="gone">
 
             <TextView
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Crowdsourced Density &amp; Market Heatmaps"
-                android:textColor="#FFFFFF"
-                android:textSize="18sp"
+                android:layout_marginTop="18dp"
+                android:text="SETUP &amp; DIAGNOSTICS"
+                android:textColor="#67E8F9"
+                android:textSize="12sp"
                 android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/tvHeatmapStatus"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="Rolling 5-Min Geohash Pool: Active"
-                android:textColor="#CBD5E1"
-                android:textSize="14sp" />
-        </LinearLayout>
-
-        <!-- PAGE 3: SETTINGS & DIAGNOSTICS -->
-        <LinearLayout
-            android:id="@+id/sectionSettings"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:background="@drawable/bg_dashboard_card"
-            android:orientation="vertical"
-            android:padding="16dp"
-            android:visibility="gone">
 
             <TextView
                 android:layout_width="wrap_content"
