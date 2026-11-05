@@ -17,11 +17,11 @@ object ShiftTracker {
      * Calculates active shift hours formatted as "xx.x" (e.g. "03.5").
      */
     fun getFormattedShiftHours(prefs: DriverPreferences): String {
-        val startMs = prefs.sessionStartMs
-        val nowMs = System.currentTimeMillis()
-        val elapsedMs = maxOf(0L, nowMs - startMs)
+        val startMs: Long = prefs.sessionStartMs
+        val nowMs: Long = System.currentTimeMillis()
+        val elapsedMs: Long = maxOf(0L, nowMs - startMs)
         
-        val totalHours = elapsedMs / 3600000.0
+        val totalHours = elapsedMs.toDouble() / 3600000.0
         return String.format(Locale.US, "%.1f", totalHours)
     }
 
