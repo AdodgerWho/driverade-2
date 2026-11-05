@@ -53,6 +53,7 @@ class MainActivity : AppCompatActivity() {
         setupHeaderAndStatusPills()
         setupModularNavigation()
         setupOperatingModesAndStats()
+        setupAlertPillTest()
         setupThresholdControls()
         setupPlatformFilterBottomSheet()
         setupDiagnosticsAndBugReport()
@@ -205,6 +206,23 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    private fun setupAlertPillTest() {
+        binding.btnTestAlertPill?.setOnClickListener {
+            if (!isAccessibilityServiceEnabled()) {
+                Toast.makeText(this, "Enable Driverade Accessibility first", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            if (!Settings.canDrawOverlays(this)) {
+                Toast.makeText(this, "Enable overlay permission to test the pill", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            sendBroadcast(Intent(OptimizedOfferEngine.ACTION_TEST_ALERT_PILL).apply {
+                setPackage(packageName)
+            })
+            Toast.makeText(this, "Sample alert requested", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun setupThresholdControls() {
