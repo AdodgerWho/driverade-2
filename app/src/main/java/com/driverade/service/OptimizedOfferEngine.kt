@@ -162,14 +162,14 @@ class OptimizedOfferEngine : AccessibilityService() {
         // Observe explicitly labelled tip amounts on history screens, independently of offers.
         TipLedger.observe(this, platform, rawList)
         if (!OfferScreenClassifier.isActiveOffer(rawList)) {
-            InternalDiagnosticsLogger.logInteraction(this, "OFFER_GATE_DROP", "No actionable offer card with time and distance")
+            InternalDiagnosticsLogger.logInteraction(this, "OFFER_GATE_DROP", "Offer screen rejected: ${OfferScreenClassifier.rejectionReason(rawList)}")
             return
         }
 
         val evaluation = parseOfferNodes(platform, pkgName, rawList)
         
         if (evaluation == null) {
-            InternalDiagnosticsLogger.logInteraction(this, "PARSE_FAIL", "Nodes scraped but regex rejected. Sample nodes: ${rawList.take(5)}")
+            InternalDiagnosticsLogger.logInteraction(this, "PARSE_FAIL", "Offer fields invalid or missing; text content withheld for privacy")
             return
         }
 
@@ -190,8 +190,11 @@ class OptimizedOfferEngine : AccessibilityService() {
         if (evaluation.meetsTarget) prefs.todayGoodOffersCount += 1
         if (prefs.loggerEnabled) LoggerService.recordOfferDiagnostic(this, prefs, evaluation)
         if (prefs.alerterEnabled) {
+            InternalDiagnosticsLogger.logInteraction(this, "ALERT_DISPATCH", "Live offer alert requested for $platform")
             broadcastToAndroidAuto(evaluation)
             showHourlyRateOverlay(evaluation)
+        } else {
+            InternalDiagnosticsLogger.logInteraction(this, "ALERT_DISABLED", "Live offer evaluated but alerter is disabled")
         }
     }
 
