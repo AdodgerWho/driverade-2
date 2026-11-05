@@ -53,6 +53,7 @@ class MainActivity : AppCompatActivity() {
         setupThresholdControls()
         setupPlatformFilterBottomSheet()
         setupDiagnosticsAndBugReport()
+        setupVisualDebugCapture()
         observeRealtimeOffers()
     }
 
@@ -206,6 +207,30 @@ class MainActivity : AppCompatActivity() {
             "Rolling 5-Min Geohash Pool: 0 active cells (On-device coordinate blurring active)"
         } else {
             grid.entries.joinToString("\n") { "${it.key}: ${it.value} validated offers" }
+        }
+    }
+
+    private fun setupVisualDebugCapture() {
+        val debugPrefs = getSharedPreferences("driverade_visual_debug", MODE_PRIVATE)
+        binding.switchVisualDebug?.apply {
+            isChecked = debugPrefs.getBoolean("enabled", false)
+            setOnCheckedChangeListener { _, enabled ->
+                if (enabled) {
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Enable local screenshots?")
+                        .setMessage("Captures gig-app screens during debugging. Screens may contain names, addresses and other private information. Screenshots stay on this device, are not automatically shared, and only the newest 40 are retained.")
+                        .setPositiveButton("Enable") { _, _ ->
+                            debugPrefs.edit().putBoolean("enabled", true).apply()
+                        }
+                        .setNegativeButton("Cancel") { _, _ ->
+                            debugPrefs.edit().putBoolean("enabled", false).apply()
+                            isChecked = false
+                        }
+                        .show()
+                } else {
+                    debugPrefs.edit().putBoolean("enabled", false).apply()
+                }
+            }
         }
     }
 
