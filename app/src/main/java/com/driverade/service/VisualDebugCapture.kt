@@ -75,8 +75,6 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
                         }
                     } catch (error: Exception) {
                         log("CAPTURE_ERROR", error.javaClass.simpleName)
-                    } catch (error: Exception) {
-                        log("CAPTURE_ERROR", error.javaClass.simpleName)
                         inFlight = false
                     }
                 }
