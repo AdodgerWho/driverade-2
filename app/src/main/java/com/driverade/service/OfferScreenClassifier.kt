@@ -18,6 +18,18 @@ internal object OfferScreenClassifier {
         "see all daily activity", "ride history", "breakdown"
     )
 
+    fun rejectionReason(texts: List<String>): String {
+        val screen = texts.joinToString(" ").lowercase(Locale.US)
+        if (history.any { screen.contains(it) }) return "history_screen"
+        val missing = mutableListOf<String>()
+        if (!action.containsMatchIn(screen)) missing.add("action")
+        if (!trip.containsMatchIn(screen)) missing.add("trip")
+        if (!money.containsMatchIn(screen)) missing.add("payout")
+        if (!time.containsMatchIn(screen)) missing.add("duration")
+        if (!distance.containsMatchIn(screen)) missing.add("distance")
+        return if (missing.isEmpty()) "none" else "missing_" + missing.joinToString("_")
+    }
+
     fun isActiveOffer(texts: List<String>): Boolean {
         val screen = texts.joinToString(" ").lowercase(Locale.US)
         // Historical screens may contain 'accept' in unrelated content.
