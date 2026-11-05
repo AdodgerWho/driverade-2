@@ -26,6 +26,18 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
     private var lastCaptureElapsed = 0L
     private var inFlight = false
     private var lastFingerprint = ""
+    private var summaryStart = SystemClock.elapsedRealtime()
+    private val counters = linkedMapOf<String, Int>()
+    private fun count(key: String) {
+        counters[key] = (counters[key] ?: 0) + 1
+        val now = SystemClock.elapsedRealtime()
+        if (now - summaryStart >= 30_000L) {
+            log("METRICS", "windowMs=${now - summaryStart} " +
+                counters.entries.joinToString(" ") { "${it.key}=${it.value}" })
+            counters.clear()
+            summaryStart = now
+        }
+    }
     private val minIntervalMs = 1000L
     private val maxFiles = 100
     private val recognizer by lazy { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
@@ -36,27 +48,31 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
 
     fun observe(event: AccessibilityEvent, pkg: String) {
         if (!isEnabled() || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        count("observed")
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-            event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return
+            event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) { count("type_skipped"); return }
         val allowed = pkg in OptimizedOfferEngine.PACKAGE_PLATFORM_MAP ||
             (GuidedSettingsState.isActive(service) &&
                 (pkg == "com.android.settings" || pkg == "com.google.android.projection.gearhead"))
-        if (!allowed || inFlight) return
+        if (!allowed) { count("package_skipped"); return }
+        if (inFlight) { count("in_flight"); return }
         val now = SystemClock.elapsedRealtime()
-        if (now - lastCaptureElapsed < minIntervalMs) return
+        if (now - lastCaptureElapsed < minIntervalMs) { count("throttled"); return }
         val source = event.source
         val fingerprint = listOf(pkg, event.eventType.toString(),
             event.className?.toString().orEmpty(),
             source?.text?.toString().orEmpty(),
             source?.contentDescription?.toString().orEmpty()).joinToString("|")
         if (fingerprint == lastFingerprint &&
-            event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) { count("duplicate"); return }
         lastFingerprint = fingerprint
         lastCaptureElapsed = now
         inFlight = true
+        count("attempted")
         service.takeScreenshot(Display.DEFAULT_DISPLAY, service.mainExecutor,
             object : AccessibilityService.TakeScreenshotCallback {
                 override fun onSuccess(result: AccessibilityService.ScreenshotResult) {
+                    count("capture_success")
                     try {
                         val buffer = result.hardwareBuffer
                         try {
@@ -79,6 +95,7 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
                     }
                 }
                 override fun onFailure(errorCode: Int) {
+                    count("capture_blocked")
                     log("CAPTURE_BLOCKED", "$pkg code=$errorCode")
                     inFlight = false
                 }
@@ -90,15 +107,25 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
         recognizer.process(image)
             .addOnSuccessListener { result ->
                 val text = result.text
-                val relevant = offerWords.containsMatchIn(text) && moneyPattern.containsMatchIn(text)
+                val hasOffer = offerWords.containsMatchIn(text)
+                val hasMoney = moneyPattern.containsMatchIn(text)
+                val hasRating = listOf("rate rider", "how was your rider", "rate passenger",
+                    "how was your passenger").any { text.contains(it, ignoreCase = true) }
+                val hasEarnings = listOf("weekly summary", "last trip", "today earnings")
+                    .any { text.contains(it, ignoreCase = true) }
+                log("OCR_CATEGORIES", "offerKeyword=$hasOffer money=$hasMoney rating=$hasRating earnings=$hasEarnings")
+                val relevant = (hasOffer && hasMoney) || hasRating || hasEarnings
                 if (relevant) {
+                    count("ocr_relevant")
                     try { save(bitmap, pkg) }
                     catch (error: Exception) { log("CAPTURE_ERROR", error.javaClass.simpleName) }
                 } else {
+                    count("ocr_rejected")
                     log("CAPTURE_REJECTED", "OCR did not find an offer keyword and monetary amount")
                 }
             }
             .addOnFailureListener { error ->
+                count("ocr_error")
                 log("OCR_ERROR", error.javaClass.simpleName)
             }
             .addOnCompleteListener {
@@ -113,6 +140,7 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
         val safePkg = pkg.replace(Regex("[^a-zA-Z0-9._-]"), "_")
         val file = File(directory, "${stamp}_${safePkg}.png")
         FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        count("saved")
         log("CAPTURE_SAVED", "${file.name} (${bitmap.width}x${bitmap.height})")
         directory.listFiles()?.sortedByDescending { it.lastModified() }
             ?.drop(maxFiles)?.forEach { it.delete() }
