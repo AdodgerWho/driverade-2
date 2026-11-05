@@ -1,6 +1,7 @@
 package com.driverade.ui
 
 import android.content.Intent
+import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -130,6 +131,18 @@ class MainActivity : AppCompatActivity() {
         binding.sectionDashboard?.visibility = if (section == Section.DASHBOARD) View.VISIBLE else View.GONE
         binding.sectionHeatmaps?.visibility = if (section == Section.HEATMAPS) View.VISIBLE else View.GONE
         binding.sectionSettings?.visibility = if (section == Section.SETTINGS) View.VISIBLE else View.GONE
+        listOf(
+            binding.navBtnDashboard to (section == Section.DASHBOARD),
+            binding.navBtnHeatmaps to (section == Section.HEATMAPS),
+            binding.navBtnSettings to (section == Section.SETTINGS)
+        ).forEach { (tab, selected) ->
+            tab?.setBackgroundResource(
+                if (selected) com.driverade.R.drawable.bg_nav_active
+                else com.driverade.R.drawable.bg_nav_inactive
+            )
+            tab?.setTextColor(Color.parseColor(if (selected) "#E5FAFF" else "#B8C9DE"))
+            tab?.contentDescription = "${tab?.text}, ${if (selected) "selected" else "not selected"}"
+        }
     }
 
     private fun setupOperatingModesAndStats() {
