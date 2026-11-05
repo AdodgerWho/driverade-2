@@ -25,6 +25,7 @@ class OptimizedOfferEngine : AccessibilityService() {
     private lateinit var prefs: DriverPreferences
     private var windowManager: WindowManager? = null
     private var activeOverlayView: LinearLayout? = null
+    private var guidance: GuideHighlighter? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var lastOfferSignature: String = ""
     private var lastOfferTimestamp: Long = 0L
@@ -53,6 +54,7 @@ class OptimizedOfferEngine : AccessibilityService() {
         super.onServiceConnected()
         prefs = DriverPreferences(this)
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        guidance = GuideHighlighter(this)
         InternalDiagnosticsLogger.initializeSession(this, prefs)
         InternalDiagnosticsLogger.logInteraction(this, "SERVICE", "OptimizedOfferEngine connected successfully.")
     }
@@ -60,6 +62,11 @@ class OptimizedOfferEngine : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
         val pkgName = event.packageName?.toString() ?: "unknown.package"
+        if (GuidedSettingsState.isActive(this) && (pkgName == "com.android.settings" || pkgName == "com.google.android.projection.gearhead")) {
+            guidance?.inspect(rootInActiveWindow, GuidedSettingsState.step(this))
+            return
+        }
+        guidance?.clear()
 
         InternalDiagnosticsLogger.logInteraction(this, "EVENT_INGEST", "Received accessibility event from package: $pkgName (Type: ${event.eventType})")
 
@@ -342,11 +349,13 @@ class OptimizedOfferEngine : AccessibilityService() {
     }
 
     override fun onInterrupt() {
+        guidance?.clear()
         dismissOverlay()
         InternalDiagnosticsLogger.logInteraction(this, "SERVICE", "OptimizedOfferEngine interrupted.")
     }
 
     override fun onDestroy() {
+        guidance?.clear()
         dismissOverlay()
         InternalDiagnosticsLogger.logInteraction(this, "SERVICE", "OptimizedOfferEngine destroyed.")
         super.onDestroy()
