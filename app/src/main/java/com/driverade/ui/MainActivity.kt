@@ -176,27 +176,27 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupDiagnosticsAndBugReport() {
-        binding.btnSendBugReport.setOnClickListener {
-            val feedbackInput = EditText(this).apply {
-                hint = "Describe what happened (e.g., Uber card missed)..."
-            }
-            AlertDialog.Builder(this)
-                .setTitle("Send Diagnostics to Support")
-                .setMessage("Attaches driverade_diagnostics.txt and emails adodgerwho@gmail.com")
-                .setView(feedbackInput)
-                .setPositiveButton("Send Email") { _, _ ->
-                    val intent = LoggerService.createBugReportEmailIntent(
-                        this,
-                        prefs,
-                        feedbackInput.text.toString()
-                    )
-                    startActivity(Intent.createChooser(intent, "Send Diagnostics Bug Report"))
-                }
-                .setNegativeButton("Cancel", null)
-                .show()
+    // 1. Email Support Bug Report
+    binding.btnSendBugReport?.setOnClickListener {
+        val feedbackInput = EditText(this).apply {
+            hint = "Describe what happened (e.g., Uber card missed)..."
         }
+        AlertDialog.Builder(this)
+            .setTitle("Send Diagnostics to Support")
+            .setMessage("Attaches driverade_diagnostics.txt and emails adodgerwho@gmail.com")
+            .setView(feedbackInput)
+            .setPositiveButton("Send Email") { _, _ ->
+                val intent = BugReportManager.createBugReportEmailIntent(
+                    this,
+                    prefs,
+                    feedbackInput.text.toString()
+                )
+                startActivity(Intent.createChooser(intent, "Send Diagnostics Bug Report"))
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
-
+    
     private fun observeRealtimeOffers() {
         lifecycleScope.launch {
             DriveradeState.latestOffer.collectLatest { offer ->
