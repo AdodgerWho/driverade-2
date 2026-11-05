@@ -11,7 +11,7 @@
         android:orientation="vertical"
         android:padding="16dp">
 
-        <!-- Hero Header -->
+        <!-- Hero Gradient Header -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -23,7 +23,7 @@
                 android:id="@+id/tvVersionBadge"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Driverade v3.62"
+                android:text="Driverade v3.63"
                 android:textColor="#FFFFFF"
                 android:textSize="22sp"
                 android:textStyle="bold" />
@@ -36,6 +36,7 @@
                 android:textColor="#CBD5E1"
                 android:textSize="13sp" />
 
+            <!-- Floating Status Pills -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -70,7 +71,7 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Navigation Tabs -->
+        <!-- Modular Page Navigation Bar -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -102,13 +103,41 @@
                 android:text="Settings" />
         </LinearLayout>
 
-        <!-- Section 1: Dashboard -->
+        <!-- PAGE 1: DASHBOARD -->
         <LinearLayout
             android:id="@+id/sectionDashboard"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:orientation="vertical">
+
+            <!-- Shift Time & Status Tracker Card -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:background="#1E293B"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="ONLINE SHIFT &amp; STATUS TRACKER"
+                    android:textColor="#38BDF8"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvShiftTracker"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Shift Time: 00.0 hrs • Status: Initializing..."
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -198,7 +227,7 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Section 2: Heatmaps -->
+        <!-- PAGE 2: HEATMAPS / DENSITY -->
         <LinearLayout
             android:id="@+id/sectionHeatmaps"
             android:layout_width="match_parent"
@@ -227,7 +256,7 @@
                 android:textSize="14sp" />
         </LinearLayout>
 
-        <!-- Section 3: Settings & Diagnostics -->
+        <!-- PAGE 3: SETTINGS & DIAGNOSTICS -->
         <LinearLayout
             android:id="@+id/sectionSettings"
             android:layout_width="match_parent"
