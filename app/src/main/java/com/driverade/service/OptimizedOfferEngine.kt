@@ -145,9 +145,15 @@ class OptimizedOfferEngine : AccessibilityService() {
 
         InternalDiagnosticsLogger.logInteraction(this, "SUCCESS", "Offer evaluated: Payout=$${evaluation.payout}, Hourly=$${evaluation.hourlyRate}/hr, TargetMet=${evaluation.meetsTarget}")
 
+        // Recognition continues for local telemetry, but output channels are independent.
         DriveradeState.recordOffer(evaluation)
-        broadcastToAndroidAuto(evaluation)
-        showHourlyRateOverlay(evaluation)
+        prefs.todayOffersCount += 1
+        if (evaluation.meetsTarget) prefs.todayGoodOffersCount += 1
+        if (prefs.loggerEnabled) LoggerService.recordOfferDiagnostic(this, prefs, evaluation)
+        if (prefs.alerterEnabled) {
+            broadcastToAndroidAuto(evaluation)
+            showHourlyRateOverlay(evaluation)
+        }
     }
 
     private fun resolvePlatform(packageName: String): String? {
