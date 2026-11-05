@@ -66,7 +66,9 @@ class OptimizedOfferEngine : AccessibilityService() {
         val pkgName = event.packageName?.toString() ?: "unknown.package"
         visualDebug?.observe(event, pkgName)
         if (GuidedSettingsState.isActive(this) && (pkgName == "com.android.settings" || pkgName == "com.google.android.projection.gearhead")) {
-            guidance?.inspect(rootInActiveWindow, GuidedSettingsState.step(this))
+            val guide = GuidedSettingsState.guide(this)
+            val seen = guidance?.inspect(rootInActiveWindow, guide, GuidedSettingsState.step(this)) == true
+            GuidedSettingsState.setTargetSeen(this, seen)
             return
         }
         guidance?.clear()
