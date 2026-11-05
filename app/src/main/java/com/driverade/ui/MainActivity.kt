@@ -24,6 +24,7 @@ import com.driverade.service.DriveradeState
 import com.driverade.service.LoggerService
 import com.driverade.service.OptimizedOfferEngine
 import com.driverade.service.ShiftTracker
+import com.driverade.service.TipLedger
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -169,6 +170,8 @@ class MainActivity : AppCompatActivity() {
         binding.tvTodayEarnings?.text = String.format(Locale.US, "$%.2f", earnings)
         binding.tvTodayActiveHours?.text = String.format(Locale.US, "%.2f active hours · $%.2f/hr", hours, rate)
         binding.tvTodayOffers?.text = "${prefs.todayOffersCount} offers · ${prefs.todayGoodOffersCount} qualified"
+        binding.tvTodayTips?.text = String.format(Locale.US, "Tips observed today: $%.2f", TipLedger.totalToday(this))
+        binding.tvTodayTipCount?.text = "${TipLedger.countToday(this)} explicit tips detected (provisional)"
     }
 
     private fun showEditTodayStats() {
