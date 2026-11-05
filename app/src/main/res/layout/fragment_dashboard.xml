@@ -111,12 +111,115 @@
             android:layout_marginTop="16dp"
             android:orientation="vertical">
 
+            <!-- Restored command center: modes and shift accounting -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:background="@drawable/bg_dashboard_card"
+                android:orientation="vertical"
+                android:padding="18dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="MONITORING CONTROLS"
+                    android:textColor="#67E8F9"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvOperatingMode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Standby · Alerts off · Logger off"
+                    android:textColor="#F8FAFC"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <Switch
+                    android:id="@+id/switchAlert"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="Offer alerts"
+                    android:textColor="#E2E8F0" />
+
+                <Switch
+                    android:id="@+id/switchLogger"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Offer diagnostics logger"
+                    android:textColor="#E2E8F0" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Both are off by default. Enable only the functions you want."
+                    android:textColor="#94A3B8"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:background="@drawable/bg_dashboard_card"
+                android:orientation="vertical"
+                android:padding="18dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="TODAY AT A GLANCE"
+                    android:textColor="#67E8F9"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvTodayEarnings"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="$0.00 earnings"
+                    android:textColor="#FFFFFF"
+                    android:textSize="28sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvTodayActiveHours"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="0.00 active hours · $0.00/hr"
+                    android:textColor="#CBD5E1"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/tvTodayOffers"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="0 offers · 0 qualified"
+                    android:textColor="#CBD5E1"
+                    android:textSize="14sp" />
+
+                <Button
+                    android:id="@+id/btnEditTodayStats"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="Edit earnings &amp; active hours" />
+            </LinearLayout>
+
             <!-- Shift Time & Status Tracker Card -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
-                android:background="#1E293B"
+                android:background="@drawable/bg_dashboard_card"
                 android:orientation="vertical"
                 android:padding="16dp">
 
@@ -142,7 +245,7 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:background="#1E293B"
+                android:background="@drawable/bg_dashboard_card"
                 android:orientation="vertical"
                 android:padding="16dp">
 
@@ -178,7 +281,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:background="#1E293B"
+                android:background="@drawable/bg_dashboard_card"
                 android:orientation="vertical"
                 android:padding="16dp">
 
@@ -233,7 +336,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:background="#1E293B"
+            android:background="@drawable/bg_dashboard_card"
             android:orientation="vertical"
             android:padding="16dp"
             android:visibility="gone">
@@ -262,7 +365,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:background="#1E293B"
+            android:background="@drawable/bg_dashboard_card"
             android:orientation="vertical"
             android:padding="16dp"
             android:visibility="gone">
