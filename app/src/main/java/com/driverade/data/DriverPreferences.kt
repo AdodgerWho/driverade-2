@@ -21,6 +21,10 @@ class DriverPreferences(context: Context) {
     var todayEarnings: Double
         get() = prefs.getFloat(KEY_TODAY_EARNINGS, 0.0f).toDouble()
         set(value) = prefs.edit().putFloat(KEY_TODAY_EARNINGS, value.toFloat()).apply()
+        
+    var sessionStartMs: Long
+        get() = prefs.getLong(KEY_SESSION_START, System.currentTimeMillis())
+        set(value) = prefs.edit().putLong(KEY_SESSION_START, value).apply()
 
     var todayActiveHours: Double
         get() = prefs.getFloat(KEY_TODAY_ACTIVE_HOURS, 0.0f).toDouble()
