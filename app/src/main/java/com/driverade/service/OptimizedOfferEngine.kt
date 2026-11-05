@@ -180,7 +180,7 @@ class OptimizedOfferEngine : AccessibilityService() {
             windows?.forEach { windowInfo ->
                 windowInfo.root?.let { winRoot ->
                     val winPkg = winRoot.packageName?.toString() ?: pkgName
-                    if (resolvePlatform(winPkg) != null) {
+                    if (if (platform == "UBER" || platform == "UBER_EATS") winPkg == pkgName else resolvePlatform(winPkg) != null) {
                         traverseNodeTree(winRoot, collectedNodes, 0)
                     }
                 }
@@ -201,16 +201,26 @@ class OptimizedOfferEngine : AccessibilityService() {
         val hasValidKeyword = OFFER_KEYWORDS.any { joinedTextLower.contains(it) } ||
             joinedTextLower.contains("tip") || joinedTextLower.contains("earnings")
 
-        if (!hasValidKeyword) {
+        if (!hasValidKeyword && platform != "UBER" && platform != "UBER_EATS") {
             InternalDiagnosticsLogger.logInteraction(this, "KEYWORD_DROP", "Ignored: Missing mandatory offer validation keywords.")
             return
         }
 
         // Observe explicitly labelled tip amounts on history screens, independently of offers.
         TipLedger.observe(this, platform, rawList)
-        if (!OfferScreenClassifier.isActiveOffer(rawList)) {
+        if (platform != "UBER" && platform != "UBER_EATS" && !OfferScreenClassifier.isActiveOffer(rawList)) {
             InternalDiagnosticsLogger.logInteraction(this, "OFFER_GATE_DROP", "Offer screen rejected: ${OfferScreenClassifier.rejectionReason(rawList)}")
             return
+        }
+
+        if (platform == "UBER" || platform == "UBER_EATS") {
+            val payoutPresent = rawList.any { PAYOUT_REGEX.containsMatchIn(it) }
+            val durationPresent = HOURS_MINUTES_REGEX.containsMatchIn(rawList.joinToString(" ")) ||
+                rawList.any { MINUTES_REGEX.containsMatchIn(it) }
+            val distancePresent = rawList.any { MILES_REGEX.containsMatchIn(it) }
+            InternalDiagnosticsLogger.logInteraction(this, "UBER_CANDIDATE",
+                "nodes=${rawList.size} keyword=$hasValidKeyword payout=$payoutPresent " +
+                    "duration=$durationPresent distance=$distancePresent; raw text withheld")
         }
 
         val evaluation = parseOfferNodes(platform, pkgName, rawList)
