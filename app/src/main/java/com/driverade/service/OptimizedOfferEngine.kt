@@ -2,6 +2,9 @@ package com.driverade.service
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
@@ -28,10 +31,30 @@ class OptimizedOfferEngine : AccessibilityService() {
     private var guidance: GuideHighlighter? = null
     private var visualDebug: VisualDebugCapture? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val testPillReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != ACTION_TEST_ALERT_PILL) return
+            val sample = OfferEvaluation(
+                platform = "TEST",
+                packageName = packageName,
+                payout = 18.50,
+                totalMiles = 5.2,
+                totalMinutes = 25.0,
+                hourlyRate = 44.40,
+                dollarsPerMile = 3.56,
+                meetsTarget = true,
+                rawNodes = emptyList()
+            )
+            showHourlyRateOverlay(sample)
+            InternalDiagnosticsLogger.logInteraction(this@OptimizedOfferEngine, "PILL_TEST", "Sample overlay requested locally")
+        }
+    }
+    private var testReceiverRegistered = false
     private var lastOfferSignature: String = ""
     private var lastOfferTimestamp: Long = 0L
 
     companion object {
+        const val ACTION_TEST_ALERT_PILL = "com.driverade.action.TEST_ALERT_PILL"
         private const val TAG = "OptimizedOfferEngine"
         private const val OVERLAY_DURATION_MS = 9000L
 
@@ -57,6 +80,14 @@ class OptimizedOfferEngine : AccessibilityService() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         guidance = GuideHighlighter(this)
         visualDebug = VisualDebugCapture(this)
+        val filter = IntentFilter(ACTION_TEST_ALERT_PILL)
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(testPillReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(testPillReceiver, filter)
+        }
+        testReceiverRegistered = true
         InternalDiagnosticsLogger.initializeSession(this, prefs)
         InternalDiagnosticsLogger.logInteraction(this, "SERVICE", "OptimizedOfferEngine connected successfully.")
     }
@@ -366,6 +397,10 @@ class OptimizedOfferEngine : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        if (testReceiverRegistered) {
+            unregisterReceiver(testPillReceiver)
+            testReceiverRegistered = false
+        }
         guidance?.clear()
         dismissOverlay()
         InternalDiagnosticsLogger.logInteraction(this, "SERVICE", "OptimizedOfferEngine destroyed.")
