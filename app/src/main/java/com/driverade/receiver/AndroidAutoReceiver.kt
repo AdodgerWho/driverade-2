@@ -8,7 +8,10 @@ import android.util.Log
 class AndroidAutoReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == "com.driverade.ACTION_OFFER_EVALUATED") {
-            Log.d("AndroidAutoReceiver", "Offer broadcast received.")
+            val platform = intent.getStringExtra("platform") ?: "UNKNOWN"
+            val payout = intent.getDoubleExtra("payout", 0.0)
+            val hourlyRate = intent.getDoubleExtra("hourly_rate", 0.0)
+            Log.d("AndroidAutoReceiver", "Offer synced [$platform]: $$payout ($${hourlyRate}/hr)")
         }
     }
 }
