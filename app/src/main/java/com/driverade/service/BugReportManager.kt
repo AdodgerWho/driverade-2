@@ -1,0 +1,97 @@
+package com.driverade.service
+
+import android.content.ContentValues
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import android.widget.Toast
+import androidx.core.content.FileProvider
+import com.driverade.data.DriverPreferences
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+
+object BugReportManager {
+
+    private const val SUPPORT_EMAIL = "adodgerwho@gmail.com"
+
+    /**
+     * Creates an email intent to send diagnostics and bug reports to support.
+     */
+    fun createBugReportEmailIntent(
+        context: Context,
+        prefs: DriverPreferences,
+        userFeedback: String
+    ): Intent {
+        val diagFile = LoggerService.ensureDiagnosticsHeader(context, prefs)
+        val uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            diagFile
+        )
+        
+        val body = buildString {
+            append("Driver Feedback:\n")
+            append(userFeedback.ifBlank { "(No custom note entered)" })
+            append("\n\n--- Inline Diagnostics Preview ---\n")
+            append(runCatching { diagFile.readText() }.getOrDefault("Unable to read log file."))
+        }
+
+        return Intent(Intent.ACTION_SEND).apply {
+            type = "message/rfc822"
+            putExtra(Intent.EXTRA_EMAIL, arrayOf(SUPPORT_EMAIL))
+            putExtra(Intent.EXTRA_SUBJECT, "Driverade Bug Report & Diagnostics")
+            putExtra(Intent.EXTRA_TEXT, body)
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+    }
+
+    /**
+     * Manually exports driverade_diagnostics.txt to the device's public Downloads folder.
+     */
+    fun exportLogsLocally(context: Context, prefs: DriverPreferences): Boolean {
+        val sourceFile = LoggerService.ensureDiagnosticsHeader(context, prefs)
+        val fileName = "driverade_diagnostics_${System.currentTimeMillis()}.txt"
+
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // Use MediaStore for Android 10+ scoped storage compliance
+                val resolver = context.contentResolver
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                }
+
+                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                if (uri != null) {
+                    resolver.openOutputStream(uri)?.use { outputStream ->
+                        FileInputStream(sourceFile).use { inputStream ->
+                            inputStream.copyTo(outputStream)
+                        }
+                    }
+                    Toast.makeText(context, "Exported to Downloads/$fileName", Toast.LONG).show()
+                    true
+                } else {
+                    false
+                }
+            } else {
+                // Legacy external storage write for older SDKs
+                val targetDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                if (!targetDir.exists()) targetDir.mkdirs()
+                val targetFile = File(targetDir, fileName)
+                
+                sourceFile.copyTo(targetFile, overwrite = true)
+                Toast.makeText(context, "Exported to ${targetFile.absolutePath}", Toast.LONG).show()
+                true
+            }
+        } catch (e: Exception) {
+            Toast.makeText(context, "Export failed: ${e.message}", Toast.SHORT).show()
+            false
+        }
+    }
+}
