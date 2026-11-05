@@ -12,21 +12,17 @@ import androidx.core.content.FileProvider
 import com.driverade.data.DriverPreferences
 import java.io.File
 import java.io.FileInputStream
-import java.io.FileOutputStream
 
 object BugReportManager {
 
     private const val SUPPORT_EMAIL = "adodgerwho@gmail.com"
 
-    /**
-     * Creates an email intent to send diagnostics and bug reports to support.
-     */
     fun createBugReportEmailIntent(
         context: Context,
         prefs: DriverPreferences,
         userFeedback: String
     ): Intent {
-        val diagFile = LoggerService.ensureDiagnosticsHeader(context, prefs)
+        val diagFile = File(context.filesDir, "driverade_diagnostics.txt")
         val uri = FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",
@@ -50,16 +46,12 @@ object BugReportManager {
         }
     }
 
-    /**
-     * Manually exports driverade_diagnostics.txt to the device's public Downloads folder.
-     */
     fun exportLogsLocally(context: Context, prefs: DriverPreferences): Boolean {
-        val sourceFile = LoggerService.ensureDiagnosticsHeader(context, prefs)
+        val sourceFile = File(context.filesDir, "driverade_diagnostics.txt")
         val fileName = "driverade_diagnostics_${System.currentTimeMillis()}.txt"
 
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // Use MediaStore for Android 10+ scoped storage compliance
                 val resolver = context.contentResolver
                 val contentValues = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
@@ -74,19 +66,17 @@ object BugReportManager {
                             inputStream.copyTo(outputStream)
                         }
                     }
-                    Toast.makeText(context, "Exported to Downloads/$fileName", Toast.LONG).show()
+                    Toast.makeText(context, "Exported to Downloads/$fileName", Toast.LENGTH_LONG).show()
                     true
                 } else {
                     false
                 }
             } else {
-                // Legacy external storage write for older SDKs
                 val targetDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
                 if (!targetDir.exists()) targetDir.mkdirs()
                 val targetFile = File(targetDir, fileName)
-                
                 sourceFile.copyTo(targetFile, overwrite = true)
-                Toast.makeText(context, "Exported to ${targetFile.absolutePath}", Toast.LONG).show()
+                Toast.makeText(context, "Exported to ${targetFile.absolutePath}", Toast.LENGTH_LONG).show()
                 true
             }
         } catch (e: Exception) {
