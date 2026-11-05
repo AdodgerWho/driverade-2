@@ -80,7 +80,7 @@ object BugReportManager {
                 true
             }
         } catch (e: Exception) {
-            Toast.makeText(context, "Export failed: ${e.message}", Toast.SHORT).show()
+            Toast.makeText(context, "Export failed: ${e.message}", Toast.LENGTH_SHORT).show()
             false
         }
     }
