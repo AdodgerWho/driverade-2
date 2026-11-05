@@ -151,10 +151,18 @@ class OptimizedOfferEngine : AccessibilityService() {
 
         val rawList = collectedNodes.toList()
         val joinedTextLower = rawList.joinToString(" ").lowercase(Locale.US)
-        val hasValidKeyword = OFFER_KEYWORDS.any { joinedTextLower.contains(it) }
+        val hasValidKeyword = OFFER_KEYWORDS.any { joinedTextLower.contains(it) } ||
+            joinedTextLower.contains("tip") || joinedTextLower.contains("earnings")
 
         if (!hasValidKeyword) {
             InternalDiagnosticsLogger.logInteraction(this, "KEYWORD_DROP", "Ignored: Missing mandatory offer validation keywords.")
+            return
+        }
+
+        // Observe explicitly labelled tip amounts on history screens, independently of offers.
+        TipLedger.observe(this, platform, rawList)
+        if (!OfferScreenClassifier.isActiveOffer(rawList)) {
+            InternalDiagnosticsLogger.logInteraction(this, "OFFER_GATE_DROP", "No actionable offer card with time and distance")
             return
         }
 
@@ -270,7 +278,8 @@ class OptimizedOfferEngine : AccessibilityService() {
 
         if (payout <= 0.0) return null
 
-        val effectiveMinutes = if (totalMinutes > 0.0) totalMinutes else 15.0
+        if (totalMinutes <= 0.0 || totalMiles <= 0.0) return null
+        val effectiveMinutes = totalMinutes
         val hourlyRate = (payout / effectiveMinutes) * 60.0
         val dollarsPerMile = if (totalMiles > 0.0) payout / totalMiles else 0.0
 
