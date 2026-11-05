@@ -2,6 +2,9 @@ package com.driverade.service
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
@@ -25,11 +28,33 @@ class OptimizedOfferEngine : AccessibilityService() {
     private lateinit var prefs: DriverPreferences
     private var windowManager: WindowManager? = null
     private var activeOverlayView: LinearLayout? = null
+    private var guidance: GuideHighlighter? = null
+    private var visualDebug: VisualDebugCapture? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val testPillReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != ACTION_TEST_ALERT_PILL) return
+            val sample = OfferEvaluation(
+                platform = "TEST",
+                packageName = packageName,
+                payout = 18.50,
+                totalMiles = 5.2,
+                totalMinutes = 25.0,
+                hourlyRate = 44.40,
+                dollarsPerMile = 3.56,
+                meetsTarget = true,
+                rawNodes = emptyList()
+            )
+            showHourlyRateOverlay(sample)
+            InternalDiagnosticsLogger.logInteraction(this@OptimizedOfferEngine, "PILL_TEST", "Sample overlay requested locally")
+        }
+    }
+    private var testReceiverRegistered = false
     private var lastOfferSignature: String = ""
     private var lastOfferTimestamp: Long = 0L
 
     companion object {
+        const val ACTION_TEST_ALERT_PILL = "com.driverade.action.TEST_ALERT_PILL"
         private const val TAG = "OptimizedOfferEngine"
         private const val OVERLAY_DURATION_MS = 9000L
 
@@ -53,6 +78,16 @@ class OptimizedOfferEngine : AccessibilityService() {
         super.onServiceConnected()
         prefs = DriverPreferences(this)
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        guidance = GuideHighlighter(this)
+        visualDebug = VisualDebugCapture(this)
+        val filter = IntentFilter(ACTION_TEST_ALERT_PILL)
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(testPillReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(testPillReceiver, filter)
+        }
+        testReceiverRegistered = true
         InternalDiagnosticsLogger.initializeSession(this, prefs)
         InternalDiagnosticsLogger.logInteraction(this, "SERVICE", "OptimizedOfferEngine connected successfully.")
     }
@@ -60,6 +95,14 @@ class OptimizedOfferEngine : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
         val pkgName = event.packageName?.toString() ?: "unknown.package"
+        visualDebug?.observe(event, pkgName)
+        if (GuidedSettingsState.isActive(this) && (pkgName == "com.android.settings" || pkgName == "com.google.android.projection.gearhead")) {
+            val guide = GuidedSettingsState.guide(this)
+            val seen = guidance?.inspect(rootInActiveWindow, guide, GuidedSettingsState.step(this)) == true
+            GuidedSettingsState.setTargetSeen(this, seen)
+            return
+        }
+        guidance?.clear()
 
         InternalDiagnosticsLogger.logInteraction(this, "EVENT_INGEST", "Received accessibility event from package: $pkgName (Type: ${event.eventType})")
 
@@ -108,10 +151,18 @@ class OptimizedOfferEngine : AccessibilityService() {
 
         val rawList = collectedNodes.toList()
         val joinedTextLower = rawList.joinToString(" ").lowercase(Locale.US)
-        val hasValidKeyword = OFFER_KEYWORDS.any { joinedTextLower.contains(it) }
+        val hasValidKeyword = OFFER_KEYWORDS.any { joinedTextLower.contains(it) } ||
+            joinedTextLower.contains("tip") || joinedTextLower.contains("earnings")
 
         if (!hasValidKeyword) {
             InternalDiagnosticsLogger.logInteraction(this, "KEYWORD_DROP", "Ignored: Missing mandatory offer validation keywords.")
+            return
+        }
+
+        // Observe explicitly labelled tip amounts on history screens, independently of offers.
+        TipLedger.observe(this, platform, rawList)
+        if (!OfferScreenClassifier.isActiveOffer(rawList)) {
+            InternalDiagnosticsLogger.logInteraction(this, "OFFER_GATE_DROP", "No actionable offer card with time and distance")
             return
         }
 
@@ -133,9 +184,15 @@ class OptimizedOfferEngine : AccessibilityService() {
 
         InternalDiagnosticsLogger.logInteraction(this, "SUCCESS", "Offer evaluated: Payout=$${evaluation.payout}, Hourly=$${evaluation.hourlyRate}/hr, TargetMet=${evaluation.meetsTarget}")
 
+        // Recognition continues for local telemetry, but output channels are independent.
         DriveradeState.recordOffer(evaluation)
-        broadcastToAndroidAuto(evaluation)
-        showHourlyRateOverlay(evaluation)
+        prefs.todayOffersCount += 1
+        if (evaluation.meetsTarget) prefs.todayGoodOffersCount += 1
+        if (prefs.loggerEnabled) LoggerService.recordOfferDiagnostic(this, prefs, evaluation)
+        if (prefs.alerterEnabled) {
+            broadcastToAndroidAuto(evaluation)
+            showHourlyRateOverlay(evaluation)
+        }
     }
 
     private fun resolvePlatform(packageName: String): String? {
@@ -221,7 +278,8 @@ class OptimizedOfferEngine : AccessibilityService() {
 
         if (payout <= 0.0) return null
 
-        val effectiveMinutes = if (totalMinutes > 0.0) totalMinutes else 15.0
+        if (totalMinutes <= 0.0 || totalMiles <= 0.0) return null
+        val effectiveMinutes = totalMinutes
         val hourlyRate = (payout / effectiveMinutes) * 60.0
         val dollarsPerMile = if (totalMiles > 0.0) payout / totalMiles else 0.0
 
@@ -342,11 +400,17 @@ class OptimizedOfferEngine : AccessibilityService() {
     }
 
     override fun onInterrupt() {
+        guidance?.clear()
         dismissOverlay()
         InternalDiagnosticsLogger.logInteraction(this, "SERVICE", "OptimizedOfferEngine interrupted.")
     }
 
     override fun onDestroy() {
+        if (testReceiverRegistered) {
+            unregisterReceiver(testPillReceiver)
+            testReceiverRegistered = false
+        }
+        guidance?.clear()
         dismissOverlay()
         InternalDiagnosticsLogger.logInteraction(this, "SERVICE", "OptimizedOfferEngine destroyed.")
         super.onDestroy()

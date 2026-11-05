@@ -2,14 +2,14 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0F172A"
+    android:background="#090F1D"
     android:fillViewport="true">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:padding="18dp">
 
         <!-- Hero Gradient Header -->
         <LinearLayout
@@ -23,16 +23,16 @@
                 android:id="@+id/tvVersionBadge"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Driverade v3.63"
+                android:text="Driverade"
                 android:textColor="#FFFFFF"
-                android:textSize="22sp"
+                android:textSize="28sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:text="Unified Multi-Platform Driver Command Center"
+                android:text="Drive smarter. Stay in control."
                 android:textColor="#CBD5E1"
                 android:textSize="13sp" />
 
@@ -78,25 +78,49 @@
             android:layout_marginTop="14dp"
             android:orientation="horizontal">
 
-            <Button
+            <TextView
+                android:textAllCaps="false"
+                android:textSize="13sp"
+                android:minHeight="48dp"
+                android:paddingHorizontal="0dp"
                 android:id="@+id/navBtnDashboard"
                 android:layout_width="0dp"
+                android:background="@drawable/bg_nav_inactive"
+                android:gravity="center"
+                android:textColor="#B8C9DE"
+                android:fontFamily="sans"
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="4dp"
                 android:layout_weight="1"
-                android:text="Dashboard" />
+                android:text="Home" />
 
-            <Button
+            <TextView
+                android:textAllCaps="false"
+                android:textSize="13sp"
+                android:minHeight="48dp"
+                android:paddingHorizontal="0dp"
                 android:id="@+id/navBtnHeatmaps"
                 android:layout_width="0dp"
+                android:background="@drawable/bg_nav_inactive"
+                android:gravity="center"
+                android:textColor="#B8C9DE"
+                android:fontFamily="sans"
                 android:layout_height="wrap_content"
                 android:layout_marginHorizontal="4dp"
                 android:layout_weight="1"
-                android:text="Heatmaps" />
+                android:text="Insights" />
 
-            <Button
+            <TextView
+                android:textAllCaps="false"
+                android:textSize="13sp"
+                android:minHeight="48dp"
+                android:paddingHorizontal="0dp"
                 android:id="@+id/navBtnSettings"
                 android:layout_width="0dp"
+                android:background="@drawable/bg_nav_inactive"
+                android:gravity="center"
+                android:textColor="#B8C9DE"
+                android:fontFamily="sans"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="4dp"
                 android:layout_weight="1"
@@ -111,19 +135,134 @@
             android:layout_marginTop="16dp"
             android:orientation="vertical">
 
+            <!-- Restored command center: modes and shift accounting -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:background="@drawable/bg_dashboard_card"
+                android:orientation="vertical"
+                android:padding="18dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="LIVE MONITORING"
+                    android:textColor="#67E8F9"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvOperatingMode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Monitoring paused"
+                    android:textColor="#F8FAFC"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <Switch
+                    android:id="@+id/switchAlert"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="Enable offer alerts"
+                    android:textColor="#E2E8F0" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Alerts are optional. Diagnostics are available in Settings."
+                    android:textColor="#94A3B8"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:background="@drawable/bg_dashboard_card"
+                android:orientation="vertical"
+                android:padding="18dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="TODAY AT A GLANCE"
+                    android:textColor="#67E8F9"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvTodayEarnings"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="$0.00"
+                    android:textColor="#FFFFFF"
+                    android:textSize="28sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvTodayActiveHours"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="0.00 active hours · $0.00/hr"
+                    android:textColor="#CBD5E1"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/tvTodayTips"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Tips observed today: $0.00"
+                    android:textColor="#86EFAC"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/tvTodayTipCount"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="0 explicit tips detected (provisional)"
+                    android:textColor="#94A3B8"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/tvTodayOffers"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="0 offers · 0 qualified"
+                    android:textColor="#CBD5E1"
+                    android:textSize="14sp" />
+
+                <Button
+                    android:id="@+id/btnEditTodayStats"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="Edit totals"
+                    android:textAllCaps="false" />
+            </LinearLayout>
+
             <!-- Shift Time & Status Tracker Card -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
-                android:background="#1E293B"
+                android:background="@drawable/bg_dashboard_card"
                 android:orientation="vertical"
                 android:padding="16dp">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="ONLINE SHIFT &amp; STATUS TRACKER"
+                    android:text="SHIFT STATUS"
                     android:textColor="#38BDF8"
                     android:textSize="11sp"
                     android:textStyle="bold" />
@@ -142,14 +281,14 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:background="#1E293B"
+                android:background="@drawable/bg_dashboard_card"
                 android:orientation="vertical"
                 android:padding="16dp">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="LIVE OFFER TELEMETRY"
+                    android:text="LATEST OFFER"
                     android:textColor="#94A3B8"
                     android:textSize="12sp"
                     android:textStyle="bold" />
@@ -159,7 +298,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
-                    android:text="Awaiting Uber / Lyft / Hich Offer..."
+                    android:text="Waiting for your next offer"
                     android:textColor="#F8FAFC"
                     android:textSize="20sp"
                     android:textStyle="bold" />
@@ -169,16 +308,74 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="Overlay pops up automatically with $/hr calculation"
+                    android:text="Offer details appear here when detected"
                     android:textColor="#CBD5E1"
                     android:textSize="14sp" />
             </LinearLayout>
+
+            <Button
+                android:id="@+id/btnTestAlertPill"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="Test alert pill"
+                android:textAllCaps="false"
+                android:contentDescription="Show a sample offer alert overlay" />
+        </LinearLayout>
+
+        <!-- PAGE 2: HEATMAPS / DENSITY -->
+        <LinearLayout
+            android:id="@+id/sectionHeatmaps"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_dashboard_card"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Crowdsourced Density &amp; Market Heatmaps"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvHeatmapStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Rolling 5-Min Geohash Pool: Active"
+                android:textColor="#CBD5E1"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <!-- PAGE 3: SETTINGS & DIAGNOSTICS -->
+        <LinearLayout
+            android:id="@+id/sectionSettings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_dashboard_card"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="OFFER PREFERENCES"
+                android:textColor="#67E8F9"
+                android:textSize="12sp"
+                android:textStyle="bold" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:background="#1E293B"
+                android:background="@drawable/bg_dashboard_card"
                 android:orientation="vertical"
                 android:padding="16dp">
 
@@ -216,56 +413,26 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
-                    android:text="Save Alert Thresholds" />
+                    android:text="Save thresholds"
+                    android:textAllCaps="false" />
 
                 <Button
                     android:id="@+id/btnOpenPlatformSheet"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
-                    android:text="Platform Filter (Rideshare &amp; Delivery)" />
+                    android:text="Choose platforms"
+                    android:textAllCaps="false" />
             </LinearLayout>
-        </LinearLayout>
-
-        <!-- PAGE 2: HEATMAPS / DENSITY -->
-        <LinearLayout
-            android:id="@+id/sectionHeatmaps"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:background="#1E293B"
-            android:orientation="vertical"
-            android:padding="16dp"
-            android:visibility="gone">
 
             <TextView
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Crowdsourced Density &amp; Market Heatmaps"
-                android:textColor="#FFFFFF"
-                android:textSize="18sp"
+                android:layout_marginTop="18dp"
+                android:text="SETUP &amp; DIAGNOSTICS"
+                android:textColor="#67E8F9"
+                android:textSize="12sp"
                 android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/tvHeatmapStatus"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="Rolling 5-Min Geohash Pool: Active"
-                android:textColor="#CBD5E1"
-                android:textSize="14sp" />
-        </LinearLayout>
-
-        <!-- PAGE 3: SETTINGS & DIAGNOSTICS -->
-        <LinearLayout
-            android:id="@+id/sectionSettings"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:background="#1E293B"
-            android:orientation="vertical"
-            android:padding="16dp"
-            android:visibility="gone">
 
             <TextView
                 android:layout_width="wrap_content"
@@ -282,6 +449,36 @@
                 android:text="Sends driverade_diagnostics.txt and custom feedback directly to adodgerwho@gmail.com."
                 android:textColor="#CBD5E1"
                 android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/btnAccessibilityGuide"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Guided Accessibility Setup" />
+
+            <Button
+                android:id="@+id/btnAndroidAutoGuide"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="USB-Only Android Auto Setup" />
+
+            <Switch
+                android:id="@+id/switchVisualDebug"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Visual Debug Capture (local screenshots)"
+                android:textColor="#FFFFFF"
+                android:checked="false" />
+
+            <Button
+                android:id="@+id/btnRunFeatureDiagnostics"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="Run Feature Diagnostics" />
 
             <Button
                 android:id="@+id/btnSendBugReport"
