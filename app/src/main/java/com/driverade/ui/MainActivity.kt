@@ -115,6 +115,7 @@ class MainActivity : AppCompatActivity() {
             showSection(Section.HEATMAPS)
         }
         binding.navBtnSettings?.setOnClickListener { showSection(Section.SETTINGS) }
+        binding.btnAndroidAutoGuide?.setOnClickListener { startActivity(Intent(this, AndroidAutoGuideActivity::class.java)) }
         showSection(Section.DASHBOARD)
     }
 
