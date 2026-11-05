@@ -289,6 +289,18 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
                 android:text="Email Diagnostics Bug Report" />
+            <Button
+                android:id="@+id/btnSendBugReport"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="Email Diagnostics Bug Report" />
+            <Button
+                android:id="@+id/btnExportLogsLocally"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Export Logs Locally (Downloads)" />
         </LinearLayout>
 
     </LinearLayout>
