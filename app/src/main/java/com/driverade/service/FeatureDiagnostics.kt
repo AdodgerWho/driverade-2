@@ -74,6 +74,25 @@ object FeatureDiagnostics {
             (file.exists() && file.canRead() && file.length() > 0L) to
                 "App-private diagnostic log exists and is readable"
         }
+        val visualEnabled = context.getSharedPreferences("driverade_visual_debug", 0)
+            .getBoolean("enabled", false)
+        val screenshotFiles = File(context.filesDir, "visual_debug").listFiles()
+            ?.filter { it.isFile && it.extension.equals("png", true) }.orEmpty()
+        val validScreenshots = screenshotFiles.count { file ->
+            runCatching {
+                file.inputStream().use { stream ->
+                    val bytes = ByteArray(8)
+                    stream.read(bytes) == 8 && bytes.contentEquals(
+                        byteArrayOf(137.toByte(), 80, 78, 71, 13, 10, 26, 10))
+                }
+            }.getOrDefault(false)
+        }
+        checks += Check("Screenshot capture file verification",
+            if (validScreenshots > 0) "PASS" else if (visualEnabled) "FAIL" else "BLOCKED",
+            "optIn=$visualEnabled savedPng=${screenshotFiles.size} verifiedPng=$validScreenshots; " +
+                "PASS proves readable image files exist, not that the current screen was captured")
+        checks += Check("Screenshot ZIP export verification", "BLOCKED",
+            "Run Export ZIP and require VISUAL_DEBUG_EXPORT_VERIFIED plus screenshot entries in the downloaded archive")
         checks += check("Android Auto receiver registration") {
             val receiver = context.packageManager.getReceiverInfo(
                 ComponentName(context, AndroidAutoReceiver::class.java), 0)
