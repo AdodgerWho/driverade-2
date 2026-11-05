@@ -74,7 +74,7 @@ class MainActivity : AppCompatActivity() {
         updatePermissionStatusPills()
 
         binding.pillAccessibilityStatus?.setOnClickListener {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            startActivity(Intent(this, AccessibilitySetupActivity::class.java))
         }
 
         binding.pillOverlayStatus?.setOnClickListener {
@@ -116,6 +116,7 @@ class MainActivity : AppCompatActivity() {
             showSection(Section.HEATMAPS)
         }
         binding.navBtnSettings?.setOnClickListener { showSection(Section.SETTINGS) }
+        binding.btnAccessibilityGuide?.setOnClickListener { startActivity(Intent(this, AccessibilitySetupActivity::class.java)) }
         binding.btnAndroidAutoGuide?.setOnClickListener { startActivity(Intent(this, AndroidAutoGuideActivity::class.java)) }
         showSection(Section.DASHBOARD)
     }
