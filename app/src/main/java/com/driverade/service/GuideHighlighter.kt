@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.provider.Settings
 import android.view.Gravity
 import android.view.WindowManager
@@ -12,22 +13,31 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.TextView
 import java.util.Locale
 
-/** Highlights a matched accessibility node. No clicks, gestures or screen uploads. */
+/** Read-only, user-operated guidance. No taps or permission changes. */
 class GuideHighlighter(private val service: AccessibilityService) {
     private val wm = service.getSystemService(AccessibilityService.WINDOW_SERVICE) as WindowManager
     private var marker: TextView? = null
     private var lastBounds: Rect? = null
+    private var lastResult = ""
 
-    fun inspect(root: AccessibilityNodeInfo?, step: Int) {
-        val targets = when (step) {
-            1 -> listOf("version")
-            2 -> listOf("developer settings", "developer options")
-            3 -> listOf("wireless android auto")
-            else -> emptyList()
+    fun inspect(root: AccessibilityNodeInfo?, guide: String, step: Int): Boolean {
+        val targets = when (guide) {
+            "accessibility" -> when (step) {
+                0 -> listOf("accessibility")
+                1 -> listOf("installed apps", "downloaded apps", "installed services")
+                2 -> listOf("driverade", "use driverade")
+                else -> emptyList()
+            }
+            else -> when (step) {
+                1 -> listOf("version")
+                2 -> listOf("developer settings", "developer options")
+                3 -> listOf("wireless android auto")
+                else -> emptyList()
+            }
         }
-        if (root == null || targets.isEmpty() || !Settings.canDrawOverlays(service)) {
+        if (root == null || targets.isEmpty()) {
             clear()
-            return
+            return false
         }
         var found: Rect? = null
         fun walk(node: AccessibilityNodeInfo?, depth: Int) {
@@ -44,8 +54,17 @@ class GuideHighlighter(private val service: AccessibilityService) {
             }
         }
         walk(root, 0)
-        val bounds = found ?: run { clear(); return }
-        if (bounds == lastBounds) return
+        val bounds = found
+        val result = "$guide:$step:${bounds != null}"
+        if (result != lastResult) {
+            lastResult = result
+            InternalDiagnosticsLogger.logInteraction(service, if (bounds != null) "TARGET_FOUND" else "TARGET_NOT_FOUND", "Guide=$guide step=$step")
+        }
+        if (bounds == null || !Settings.canDrawOverlays(service) || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            clear()
+            return bounds != null
+        }
+        if (bounds == lastBounds) return true
         clear()
         val view = TextView(service).apply {
             text = "◎"
@@ -64,7 +83,8 @@ class GuideHighlighter(private val service: AccessibilityService) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.LEFT
@@ -74,7 +94,11 @@ class GuideHighlighter(private val service: AccessibilityService) {
         runCatching { wm.addView(view, params) }.onSuccess {
             marker = view
             lastBounds = Rect(bounds)
+            InternalDiagnosticsLogger.logInteraction(service, "HIGHLIGHT_SHOWN", "Guide=$guide step=$step")
+        }.onFailure {
+            InternalDiagnosticsLogger.logInteraction(service, "HIGHLIGHT_FAILED", "Guide=$guide step=$step")
         }
+        return true
     }
 
     fun clear() {
