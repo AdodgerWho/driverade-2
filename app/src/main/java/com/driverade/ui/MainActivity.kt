@@ -20,6 +20,7 @@ import androidx.lifecycle.lifecycleScope
 import com.driverade.data.DriverPreferences
 import com.driverade.databinding.FragmentDashboardBinding
 import com.driverade.service.BugReportManager
+import com.driverade.service.FeatureDiagnostics
 import com.driverade.service.DriveradeState
 import com.driverade.service.LoggerService
 import com.driverade.service.OptimizedOfferEngine
@@ -336,6 +337,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupDiagnosticsAndBugReport() {
+        binding.btnRunFeatureDiagnostics?.setOnClickListener {
+            val checks = FeatureDiagnostics.run(this)
+            AlertDialog.Builder(this)
+                .setTitle("Feature Diagnostics")
+                .setMessage(FeatureDiagnostics.format(checks))
+                .setPositiveButton("Close", null)
+                .show()
+        }
         binding.btnSendBugReport?.setOnClickListener {
             val feedbackInput = EditText(this).apply {
                 hint = "Describe what happened (e.g., Uber card missed)..."
