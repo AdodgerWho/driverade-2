@@ -7,6 +7,9 @@ import android.os.Build
 import android.os.SystemClock
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -23,8 +26,11 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
     private var lastCaptureElapsed = 0L
     private var inFlight = false
     private var lastFingerprint = ""
-    private val minIntervalMs = 2000L
-    private val maxFiles = 40
+    private val minIntervalMs = 1000L
+    private val maxFiles = 100
+    private val recognizer by lazy { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
+    private val offerWords = Regex("(?i)\\b(offer|trip|ride|delivery|accept|decline|pickup|dropoff|miles|mins|minutes)\\b")
+    private val moneyPattern = Regex("\\$\\s*\\d+(?:\\.\\d{1,2})?")
 
     fun isEnabled(): Boolean = preferences.getBoolean("enabled", false)
 
@@ -58,10 +64,10 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
                                 result.colorSpace ?: ColorSpace.get(ColorSpace.Named.SRGB))
                             val softwareBitmap = hardwareBitmap?.copy(Bitmap.Config.ARGB_8888, false)
                             try {
-                                if (softwareBitmap != null) save(softwareBitmap, pkg)
-                                else log("CAPTURE_EMPTY", pkg)
+                                if (softwareBitmap != null) {
+                                    verifyAndSave(softwareBitmap, pkg)
+                                } else log("CAPTURE_EMPTY", pkg)
                             } finally {
-                                softwareBitmap?.recycle()
                                 hardwareBitmap?.recycle()
                             }
                         } finally {
@@ -69,7 +75,8 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
                         }
                     } catch (error: Exception) {
                         log("CAPTURE_ERROR", error.javaClass.simpleName)
-                    } finally {
+                    } catch (error: Exception) {
+                        log("CAPTURE_ERROR", error.javaClass.simpleName)
                         inFlight = false
                     }
                 }
@@ -78,6 +85,28 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
                     inFlight = false
                 }
             })
+    }
+
+    private fun verifyAndSave(bitmap: Bitmap, pkg: String) {
+        val image = InputImage.fromBitmap(bitmap, 0)
+        recognizer.process(image)
+            .addOnSuccessListener { result ->
+                val text = result.text
+                val relevant = offerWords.containsMatchIn(text) && moneyPattern.containsMatchIn(text)
+                if (relevant) {
+                    try { save(bitmap, pkg) }
+                    catch (error: Exception) { log("CAPTURE_ERROR", error.javaClass.simpleName) }
+                } else {
+                    log("CAPTURE_REJECTED", "OCR did not find an offer keyword and monetary amount")
+                }
+            }
+            .addOnFailureListener { error ->
+                log("OCR_ERROR", error.javaClass.simpleName)
+            }
+            .addOnCompleteListener {
+                bitmap.recycle()
+                inFlight = false
+            }
     }
 
     private fun save(bitmap: Bitmap, pkg: String) {
