@@ -7,13 +7,33 @@ android {
     namespace = "com.driverade"
     compileSdk = 34
 
+    signingConfigs {
+        create("driveradeUpdates") {
+            val keyPath = System.getenv("DRIVERADE_KEYSTORE_PATH")
+            if (!keyPath.isNullOrBlank()) {
+                storeFile = file(keyPath)
+                storePassword = System.getenv("DRIVERADE_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("DRIVERADE_KEY_ALIAS")
+                keyPassword = System.getenv("DRIVERADE_KEY_PASSWORD")
+            }
+        }
+    }
+
     defaultConfig {
         applicationId = "com.driverade"
         minSdk = 26
         targetSdk = 34
-        versionCode = 62
-        versionName = "3.62"
+        versionCode = System.getenv("DRIVERADE_VERSION_CODE")?.toIntOrNull() ?: 62
+        versionName = "3.64"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        getByName("debug") {
+            if (!System.getenv("DRIVERADE_KEYSTORE_PATH").isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("driveradeUpdates")
+            }
+        }
     }
 
     buildFeatures {
