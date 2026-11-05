@@ -31,12 +31,13 @@ jobs:
           else
             echo "::warning::Stable update signing is NOT configured; debug APK may require uninstall before install."
           fi
+      - name: Set increasing version code
+        run: echo "DRIVERADE_VERSION_CODE=$((10000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
       - name: Build APK
         env:
           DRIVERADE_KEYSTORE_PASSWORD: ${{ secrets.DRIVERADE_KEYSTORE_PASSWORD }}
           DRIVERADE_KEY_ALIAS: ${{ secrets.DRIVERADE_KEY_ALIAS }}
           DRIVERADE_KEY_PASSWORD: ${{ secrets.DRIVERADE_KEY_PASSWORD }}
-          DRIVERADE_VERSION_CODE: ${{ github.run_number }}
         run: gradle assembleDebug
       - name: Verify APK identity and certificate
         run: |
