@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.view.View
+import android.text.InputType
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Switch
@@ -50,6 +51,7 @@ class MainActivity : AppCompatActivity() {
 
         setupHeaderAndStatusPills()
         setupModularNavigation()
+        setupOperatingModesAndStats()
         setupThresholdControls()
         setupPlatformFilterBottomSheet()
         setupDiagnosticsAndBugReport()
@@ -61,6 +63,7 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         updatePermissionStatusPills()
         updateDashboardShiftAndStatus()
+        refreshTodayStats()
         shiftHandler.post(shiftUpdateRunnable)
     }
 
@@ -127,6 +130,78 @@ class MainActivity : AppCompatActivity() {
         binding.sectionDashboard?.visibility = if (section == Section.DASHBOARD) View.VISIBLE else View.GONE
         binding.sectionHeatmaps?.visibility = if (section == Section.HEATMAPS) View.VISIBLE else View.GONE
         binding.sectionSettings?.visibility = if (section == Section.SETTINGS) View.VISIBLE else View.GONE
+    }
+
+    private fun setupOperatingModesAndStats() {
+        binding.switchAlert?.isChecked = prefs.alerterEnabled
+        binding.switchLogger?.isChecked = prefs.loggerEnabled
+        binding.switchAlert?.setOnCheckedChangeListener { _, checked ->
+            prefs.alerterEnabled = checked
+            refreshOperatingMode()
+        }
+        binding.switchLogger?.setOnCheckedChangeListener { _, checked ->
+            prefs.loggerEnabled = checked
+            refreshOperatingMode()
+        }
+        binding.btnEditTodayStats?.setOnClickListener { showEditTodayStats() }
+        refreshOperatingMode()
+        refreshTodayStats()
+    }
+
+    private fun refreshOperatingMode() {
+        val mode = when {
+            prefs.alerterEnabled && prefs.loggerEnabled -> "ALERT + LOGGER"
+            prefs.alerterEnabled -> "ALERTER ACTIVE"
+            prefs.loggerEnabled -> "LOGGER ACTIVE"
+            else -> "STANDBY"
+        }
+        binding.tvOperatingMode?.text = mode
+    }
+
+    private fun refreshTodayStats() {
+        val earnings = prefs.todayEarnings
+        val hours = prefs.todayActiveHours
+        val rate = if (hours > 0.0) earnings / hours else 0.0
+        binding.tvTodayEarnings?.text = String.format(Locale.US, "$%.2f earnings", earnings)
+        binding.tvTodayActiveHours?.text = String.format(Locale.US, "%.2f active hours · $%.2f/hr", hours, rate)
+        binding.tvTodayOffers?.text = "${prefs.todayOffersCount} offers · ${prefs.todayGoodOffersCount} qualified"
+    }
+
+    private fun showEditTodayStats() {
+        val earnings = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText(String.format(Locale.US, "%.2f", prefs.todayEarnings))
+            hint = "Today's earnings"
+        }
+        val hours = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText(String.format(Locale.US, "%.2f", prefs.todayActiveHours))
+            hint = "Active hours"
+        }
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(40, 12, 40, 0)
+            addView(TextView(this@MainActivity).apply { text = "Earnings ($)" })
+            addView(earnings)
+            addView(TextView(this@MainActivity).apply { text = "Active hours" })
+            addView(hours)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Edit today's totals")
+            .setView(container)
+            .setPositiveButton("Save") { _, _ ->
+                val amount = earnings.text.toString().toDoubleOrNull()
+                val time = hours.text.toString().toDoubleOrNull()
+                if (amount == null || time == null || !amount.isFinite() || !time.isFinite() || amount < 0 || time < 0) {
+                    Toast.makeText(this, "Enter valid non-negative totals", Toast.LENGTH_SHORT).show()
+                } else {
+                    prefs.todayEarnings = amount
+                    prefs.todayActiveHours = time
+                    refreshTodayStats()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun setupThresholdControls() {
@@ -200,6 +275,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.tvShiftTracker?.text = statusText
+        refreshTodayStats()
     }
 
     private fun refreshHeatmapSummary() {
