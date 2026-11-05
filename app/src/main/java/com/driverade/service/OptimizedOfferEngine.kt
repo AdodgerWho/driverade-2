@@ -50,6 +50,51 @@ class OptimizedOfferEngine : AccessibilityService() {
         }
     }
     private var testReceiverRegistered = false
+    private var lastVisibilitySignature = ""
+    private var lastVisibilityLogAt = 0L
+
+    /** Window metadata only; never capture screen text or infer projection visibility. */
+    private fun logWindowVisibility(event: AccessibilityEvent, eventPackage: String) {
+        val started = android.os.SystemClock.elapsedRealtime()
+        try {
+            val activePackage = rootInActiveWindow?.packageName?.toString()
+            val accessibleWindows = windows.orEmpty()
+            val targetWindows = accessibleWindows.filter { window ->
+                val pkg = window.root?.packageName?.toString()
+                pkg != null && resolvePlatform(pkg) != null
+            }
+            val eventWindow = accessibleWindows.firstOrNull { it.id == event.windowId }
+            val visibility = when {
+                activePackage == eventPackage -> "ACTIVE_ROOT"
+                targetWindows.any { it.root?.packageName?.toString() == eventPackage } -> "OTHER_ACCESSIBLE_WINDOW"
+                else -> "NOT_OBSERVED"
+            }
+            val type = when (eventWindow?.type) {
+                android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION -> "APPLICATION"
+                android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD -> "INPUT_METHOD"
+                android.view.accessibility.AccessibilityWindowInfo.TYPE_SYSTEM -> "SYSTEM"
+                android.view.accessibility.AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY -> "ACCESSIBILITY_OVERLAY"
+                else -> "UNKNOWN"
+            }
+            val signature = "$eventPackage|$activePackage|$visibility|$type|${eventWindow?.isActive}|${eventWindow?.isFocused}|${targetWindows.size}"
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (signature != lastVisibilitySignature || now - lastVisibilityLogAt >= 15000L) {
+                lastVisibilitySignature = signature
+                lastVisibilityLogAt = now
+                InternalDiagnosticsLogger.logInteraction(this, "WINDOW_VISIBILITY",
+                    "eventPkg=$eventPackage activePkg=${activePackage ?: "UNKNOWN"} " +
+                    "visibility=$visibility eventWindowType=$type " +
+                    "windowActive=${eventWindow?.isActive ?: "UNKNOWN"} " +
+                    "windowFocused=${eventWindow?.isFocused ?: "UNKNOWN"} " +
+                    "accessibleTargetWindows=${targetWindows.size} androidAutoDisplay=UNKNOWN " +
+                    "inspectionMs=${android.os.SystemClock.elapsedRealtime() - started}")
+            }
+        } catch (e: Exception) {
+            InternalDiagnosticsLogger.logInteraction(this, "WINDOW_VISIBILITY_ERROR",
+                "Window metadata unavailable: ${e.javaClass.simpleName}")
+        }
+    }
+
     private var lastOfferSignature: String = ""
     private var lastOfferTimestamp: Long = 0L
 
@@ -105,6 +150,8 @@ class OptimizedOfferEngine : AccessibilityService() {
         guidance?.clear()
 
         InternalDiagnosticsLogger.logInteraction(this, "EVENT_INGEST", "Received accessibility event from package: $pkgName (Type: ${event.eventType})")
+
+        if (resolvePlatform(pkgName) != null) logWindowVisibility(event, pkgName)
 
         val platform = resolvePlatform(pkgName)
         if (platform == null) {
