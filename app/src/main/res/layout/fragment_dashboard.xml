@@ -290,6 +290,15 @@
                 android:layout_marginTop="16dp"
                 android:text="USB-Only Android Auto Setup" />
 
+            <Switch
+                android:id="@+id/switchVisualDebug"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Visual Debug Capture (local screenshots)"
+                android:textColor="#FFFFFF"
+                android:checked="false" />
+
             <Button
                 android:id="@+id/btnSendBugReport"
                 android:layout_width="match_parent"
