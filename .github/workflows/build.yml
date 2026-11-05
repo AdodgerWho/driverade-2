@@ -26,8 +26,12 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.DRIVERADE_KEYSTORE_BASE64 }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
-            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/driverade-updates.jks"
-            echo "DRIVERADE_KEYSTORE_PATH=$RUNNER_TEMP/driverade-updates.jks" >> "$GITHUB_ENV"
+            if printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/driverade-updates.jks" && [ -s "$RUNNER_TEMP/driverade-updates.jks" ]; then
+              echo "DRIVERADE_KEYSTORE_PATH=$RUNNER_TEMP/driverade-updates.jks" >> "$GITHUB_ENV"
+            else
+              rm -f "$RUNNER_TEMP/driverade-updates.jks"
+              echo "::warning::Invalid optional keystore Base64; using debug signing for this build. Correct the secret before distributing update-compatible APKs."
+            fi
           else
             echo "::warning::Stable update signing is NOT configured; debug APK may require uninstall before install."
           fi
