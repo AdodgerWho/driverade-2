@@ -26,6 +26,7 @@ class OptimizedOfferEngine : AccessibilityService() {
     private var windowManager: WindowManager? = null
     private var activeOverlayView: LinearLayout? = null
     private var guidance: GuideHighlighter? = null
+    private var visualDebug: VisualDebugCapture? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var lastOfferSignature: String = ""
     private var lastOfferTimestamp: Long = 0L
@@ -55,6 +56,7 @@ class OptimizedOfferEngine : AccessibilityService() {
         prefs = DriverPreferences(this)
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         guidance = GuideHighlighter(this)
+        visualDebug = VisualDebugCapture(this)
         InternalDiagnosticsLogger.initializeSession(this, prefs)
         InternalDiagnosticsLogger.logInteraction(this, "SERVICE", "OptimizedOfferEngine connected successfully.")
     }
@@ -62,6 +64,7 @@ class OptimizedOfferEngine : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
         val pkgName = event.packageName?.toString() ?: "unknown.package"
+        visualDebug?.observe(event, pkgName)
         if (GuidedSettingsState.isActive(this) && (pkgName == "com.android.settings" || pkgName == "com.google.android.projection.gearhead")) {
             guidance?.inspect(rootInActiveWindow, GuidedSettingsState.step(this))
             return
