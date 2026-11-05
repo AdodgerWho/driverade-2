@@ -215,6 +215,24 @@
                     android:textSize="14sp" />
 
                 <TextView
+                    android:id="@+id/tvTodayTips"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Tips observed today: $0.00"
+                    android:textColor="#86EFAC"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/tvTodayTipCount"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="0 explicit tips detected (provisional)"
+                    android:textColor="#94A3B8"
+                    android:textSize="12sp" />
+
+                <TextView
                     android:id="@+id/tvTodayOffers"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
