@@ -368,6 +368,17 @@ class MainActivity : AppCompatActivity() {
         binding.btnExportLogsLocally?.setOnClickListener {
             BugReportManager.exportLogsLocally(this, prefs)
         }
+
+        binding.btnExportVisualDebugBundle?.setOnClickListener {
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Export private screenshots?")
+                .setMessage("Saved screenshots may contain rider names, addresses, and other sensitive details. The ZIP is saved locally to Downloads. Review it before sharing.")
+                .setPositiveButton("Export ZIP") { _, _ ->
+                    BugReportManager.exportVisualDebugBundle(this)
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
     }
 
     private fun observeRealtimeOffers() {
