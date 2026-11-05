@@ -7,146 +7,106 @@ import android.os.Build
 import android.os.SystemClock
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.io.File
 import java.io.FileOutputStream
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Explicit opt-in debugging only. Captures target-app screen changes to private storage.
- * Screenshots are never automatically attached to reports or transmitted.
+ * Opt-in, on-device diagnostic capture. Capture is not gated on OCR keywords:
+ * inaccessible offer cards must still be captured for investigation.
  */
 internal class VisualDebugCapture(private val service: AccessibilityService) {
     private val preferences = service.getSharedPreferences("driverade_visual_debug", 0)
     private val directory = File(service.filesDir, "visual_debug")
+    private val busy = AtomicBoolean(false)
     private var lastCaptureElapsed = 0L
-    private var inFlight = false
-    private var lastFingerprint = ""
-    private var summaryStart = SystemClock.elapsedRealtime()
-    private val counters = linkedMapOf<String, Int>()
-    private fun count(key: String) {
-        counters[key] = (counters[key] ?: 0) + 1
-        val now = SystemClock.elapsedRealtime()
-        if (now - summaryStart >= 30_000L) {
-            log("METRICS", "windowMs=${now - summaryStart} " +
-                counters.entries.joinToString(" ") { "${it.key}=${it.value}" })
-            counters.clear()
-            summaryStart = now
-        }
-    }
-    private val minIntervalMs = 1000L
-    private val maxFiles = 100
-    private val recognizer by lazy { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
-    private val offerWords = Regex("(?i)\\b(offer|trip|ride|delivery|accept|decline|pickup|dropoff|miles|mins|minutes)\\b")
-    private val moneyPattern = Regex("\\$\\s*\\d+(?:\\.\\d{1,2})?")
+    private var serial = 0L
+    private val intervalMs = 1500L
+    private val maxFiles = 40
 
     fun isEnabled(): Boolean = preferences.getBoolean("enabled", false)
 
     fun observe(event: AccessibilityEvent, pkg: String) {
-        if (!isEnabled() || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
-        count("observed")
+        if (!isEnabled()) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            log("UNSUPPORTED", "api=${Build.VERSION.SDK_INT}")
+            return
+        }
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-            event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) { count("type_skipped"); return }
-        val allowed = pkg in OptimizedOfferEngine.PACKAGE_PLATFORM_MAP ||
+            event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return
+        val target = OptimizedOfferEngine.PACKAGE_PLATFORM_MAP.containsKey(pkg) ||
             (GuidedSettingsState.isActive(service) &&
                 (pkg == "com.android.settings" || pkg == "com.google.android.projection.gearhead"))
-        if (!allowed) { count("package_skipped"); return }
-        if (inFlight) { count("in_flight"); return }
+        if (!target) return
         val now = SystemClock.elapsedRealtime()
-        if (now - lastCaptureElapsed < minIntervalMs) { count("throttled"); return }
-        val source = event.source
-        val fingerprint = listOf(pkg, event.eventType.toString(),
-            event.className?.toString().orEmpty(),
-            source?.text?.toString().orEmpty(),
-            source?.contentDescription?.toString().orEmpty()).joinToString("|")
-        if (fingerprint == lastFingerprint &&
-            event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) { count("duplicate"); return }
-        lastFingerprint = fingerprint
+        if (now - lastCaptureElapsed < intervalMs || !busy.compareAndSet(false, true)) return
         lastCaptureElapsed = now
-        inFlight = true
-        count("attempted")
-        service.takeScreenshot(Display.DEFAULT_DISPLAY, service.mainExecutor,
-            object : AccessibilityService.TakeScreenshotCallback {
-                override fun onSuccess(result: AccessibilityService.ScreenshotResult) {
-                    count("capture_success")
-                    try {
-                        val buffer = result.hardwareBuffer
-                        try {
-                            val hardwareBitmap = Bitmap.wrapHardwareBuffer(buffer,
-                                result.colorSpace ?: ColorSpace.get(ColorSpace.Named.SRGB))
-                            val softwareBitmap = hardwareBitmap?.copy(Bitmap.Config.ARGB_8888, false)
-                            try {
-                                if (softwareBitmap != null) {
-                                    verifyAndSave(softwareBitmap, pkg)
-                                } else log("CAPTURE_EMPTY", pkg)
-                            } finally {
-                                hardwareBitmap?.recycle()
-                            }
-                        } finally {
-                            buffer.close()
-                        }
-                    } catch (error: Exception) {
-                        log("CAPTURE_ERROR", error.javaClass.simpleName)
-                        inFlight = false
+        log("REQUESTED", "package=$pkg eventType=${event.eventType}")
+        try {
+            service.takeScreenshot(Display.DEFAULT_DISPLAY, service.mainExecutor,
+                object : AccessibilityService.TakeScreenshotCallback {
+                    override fun onFailure(errorCode: Int) {
+                        log("CAPTURE_FAILED", "package=$pkg code=$errorCode")
+                        busy.set(false)
                     }
-                }
-                override fun onFailure(errorCode: Int) {
-                    count("capture_blocked")
-                    log("CAPTURE_BLOCKED", "$pkg code=$errorCode")
-                    inFlight = false
-                }
-            })
+                    override fun onSuccess(result: AccessibilityService.ScreenshotResult) {
+                        var bitmap: Bitmap? = null
+                        try {
+                            val buffer = result.hardwareBuffer
+                            try {
+                                val hardware = Bitmap.wrapHardwareBuffer(
+                                    buffer, result.colorSpace ?: ColorSpace.get(ColorSpace.Named.SRGB))
+                                    ?: error("Hardware buffer could not be mapped")
+                                try { bitmap = hardware.copy(Bitmap.Config.ARGB_8888, false) }
+                                finally { hardware.recycle() }
+                            } finally { buffer.close() }
+                            val image = bitmap ?: error("Bitmap copy returned null")
+                            log("CAPTURE_SUCCESS", "width=${image.width} height=${image.height}")
+                            saveAndVerify(image, pkg)
+                        } catch (error: Exception) {
+                            log("SAVE_FAILED", "reason=${error.javaClass.simpleName}")
+                        } finally {
+                            bitmap?.recycle()
+                            busy.set(false)
+                        }
+                    }
+                })
+        } catch (error: Exception) {
+            log("REQUEST_FAILED", "reason=${error.javaClass.simpleName}")
+            busy.set(false)
+        }
     }
 
-    private fun verifyAndSave(bitmap: Bitmap, pkg: String) {
-        val image = InputImage.fromBitmap(bitmap, 0)
-        recognizer.process(image)
-            .addOnSuccessListener { result ->
-                val text = result.text
-                val hasOffer = offerWords.containsMatchIn(text)
-                val hasMoney = moneyPattern.containsMatchIn(text)
-                val hasRating = listOf("rate rider", "how was your rider", "rate passenger",
-                    "how was your passenger").any { text.contains(it, ignoreCase = true) }
-                val hasEarnings = listOf("weekly summary", "last trip", "today earnings")
-                    .any { text.contains(it, ignoreCase = true) }
-                log("OCR_CATEGORIES", "offerKeyword=$hasOffer money=$hasMoney rating=$hasRating earnings=$hasEarnings")
-                val relevant = (hasOffer && hasMoney) || hasRating || hasEarnings
-                if (relevant) {
-                    count("ocr_relevant")
-                    try { save(bitmap, pkg) }
-                    catch (error: Exception) { log("CAPTURE_ERROR", error.javaClass.simpleName) }
-                } else {
-                    count("ocr_rejected")
-                    log("CAPTURE_REJECTED", "OCR did not find an offer keyword and monetary amount")
-                }
-            }
-            .addOnFailureListener { error ->
-                count("ocr_error")
-                log("OCR_ERROR", error.javaClass.simpleName)
-            }
-            .addOnCompleteListener {
-                bitmap.recycle()
-                inFlight = false
-            }
-    }
-
-    private fun save(bitmap: Bitmap, pkg: String) {
-        directory.mkdirs()
-        val stamp = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date())
+    private fun saveAndVerify(bitmap: Bitmap, pkg: String) {
+        check(directory.isDirectory || directory.mkdirs()) { "Cannot create image directory" }
         val safePkg = pkg.replace(Regex("[^a-zA-Z0-9._-]"), "_")
-        val file = File(directory, "${stamp}_${safePkg}.png")
-        FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        count("saved")
-        log("CAPTURE_SAVED", "${file.name} (${bitmap.width}x${bitmap.height})")
-        directory.listFiles()?.sortedByDescending { it.lastModified() }
-            ?.drop(maxFiles)?.forEach { it.delete() }
+        val name = "${System.currentTimeMillis()}_${++serial}_${safePkg}.png"
+        val temp = File(directory, "$name.tmp")
+        val output = File(directory, name)
+        try {
+            FileOutputStream(temp).use { stream ->
+                check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) { "PNG encoder failed" }
+                stream.fd.sync()
+            }
+            check(temp.length() > 8) { "Empty PNG file" }
+            check(temp.renameTo(output)) { "Could not finalize PNG" }
+            val valid = output.inputStream().use { input ->
+                val signature = ByteArray(8)
+                input.read(signature) == 8 && signature.contentEquals(
+                    byteArrayOf(137.toByte(), 80, 78, 71, 13, 10, 26, 10))
+            }
+            check(valid) { "Invalid PNG signature" }
+            log("FILE_VERIFIED", "file=${output.name} bytes=${output.length()}")
+            directory.listFiles()?.filter { it.isFile && it.extension.equals("png", true) }
+                ?.sortedByDescending { it.lastModified() }?.drop(maxFiles)?.forEach { it.delete() }
+        } catch (error: Exception) {
+            temp.delete()
+            output.delete()
+            throw error
+        }
     }
 
-    private fun log(event: String, details: String) {
-        InternalDiagnosticsLogger.logInteraction(service, "VISUAL_DEBUG_$event", details)
+    private fun log(event: String, detail: String) {
+        InternalDiagnosticsLogger.logInteraction(service, "VISUAL_DEBUG_$event", detail)
     }
 }
