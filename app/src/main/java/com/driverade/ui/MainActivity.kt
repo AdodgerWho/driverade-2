@@ -73,7 +73,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupHeaderAndStatusPills() {
-        binding.tvVersionBadge?.text = "Driverade v3.63"
+        binding.tvVersionBadge?.text = "Driverade"
         updatePermissionStatusPills()
 
         binding.pillAccessibilityStatus?.setOnClickListener {
@@ -134,13 +134,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupOperatingModesAndStats() {
         binding.switchAlert?.isChecked = prefs.alerterEnabled
-        binding.switchLogger?.isChecked = prefs.loggerEnabled
         binding.switchAlert?.setOnCheckedChangeListener { _, checked ->
             prefs.alerterEnabled = checked
-            refreshOperatingMode()
-        }
-        binding.switchLogger?.setOnCheckedChangeListener { _, checked ->
-            prefs.loggerEnabled = checked
             refreshOperatingMode()
         }
         binding.btnEditTodayStats?.setOnClickListener { showEditTodayStats() }
@@ -149,12 +144,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshOperatingMode() {
-        val mode = when {
-            prefs.alerterEnabled && prefs.loggerEnabled -> "ALERT + LOGGER"
-            prefs.alerterEnabled -> "ALERTER ACTIVE"
-            prefs.loggerEnabled -> "LOGGER ACTIVE"
-            else -> "STANDBY"
-        }
+        val mode = if (prefs.alerterEnabled) "ALERTS ACTIVE" else "MONITORING PAUSED"
         binding.tvOperatingMode?.text = mode
     }
 
@@ -162,7 +152,7 @@ class MainActivity : AppCompatActivity() {
         val earnings = prefs.todayEarnings
         val hours = prefs.todayActiveHours
         val rate = if (hours > 0.0) earnings / hours else 0.0
-        binding.tvTodayEarnings?.text = String.format(Locale.US, "$%.2f earnings", earnings)
+        binding.tvTodayEarnings?.text = String.format(Locale.US, "$%.2f", earnings)
         binding.tvTodayActiveHours?.text = String.format(Locale.US, "%.2f active hours · $%.2f/hr", hours, rate)
         binding.tvTodayOffers?.text = "${prefs.todayOffersCount} offers · ${prefs.todayGoodOffersCount} qualified"
     }
