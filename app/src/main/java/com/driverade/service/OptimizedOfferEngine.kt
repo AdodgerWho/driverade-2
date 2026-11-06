@@ -173,7 +173,10 @@ class OptimizedOfferEngine : AccessibilityService() {
         }
 
         rootInActiveWindow?.let { root ->
-            traverseNodeTree(root, collectedNodes, 0)
+            val rootPkg = root.packageName?.toString()
+            if ((platform != "UBER" && platform != "UBER_EATS") || rootPkg == pkgName) {
+                traverseNodeTree(root, collectedNodes, 0)
+            }
         }
 
         try {
@@ -223,6 +226,16 @@ class OptimizedOfferEngine : AccessibilityService() {
                     "duration=$durationPresent distance=$distancePresent; raw text withheld")
         }
 
+        // Map pills, earnings and pickup navigation are not incoming offers.
+        // Keep candidate telemetry, but only actionable offer screens can alert.
+        if ((platform == "UBER" || platform == "UBER_EATS") &&
+            !OfferScreenClassifier.isActiveOffer(rawList)) {
+            InternalDiagnosticsLogger.logInteraction(this, "UBER_OFFER_GATE_DROP",
+                "reason=${OfferScreenClassifier.rejectionReason(rawList)} " +
+                    "windowId=${event.windowId} nodes=${rawList.size}; text withheld")
+            return
+        }
+
         val evaluation = parseOfferNodes(platform, pkgName, rawList)
         
         if (evaluation == null) {
@@ -232,8 +245,8 @@ class OptimizedOfferEngine : AccessibilityService() {
 
         val signature = "${evaluation.platform}_${evaluation.payout}_${evaluation.totalMinutes}_${evaluation.totalMiles}"
         val now = System.currentTimeMillis()
-        if (signature == lastOfferSignature && (now - lastOfferTimestamp) < 4000L) {
-            InternalDiagnosticsLogger.logInteraction(this, "DEBOUNCE", "Duplicate offer suppressed within 4s window.")
+        if (signature == lastOfferSignature && (now - lastOfferTimestamp) < 45000L) {
+            InternalDiagnosticsLogger.logInteraction(this, "DEBOUNCE", "Duplicate offer suppressed within 45s window.")
             return
         }
         lastOfferSignature = signature
