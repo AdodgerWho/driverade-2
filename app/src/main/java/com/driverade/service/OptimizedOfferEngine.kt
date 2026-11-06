@@ -50,6 +50,8 @@ class OptimizedOfferEngine : AccessibilityService() {
         }
     }
     private var testReceiverRegistered = false
+    private var lastGuideTrace = ""
+    private var lastGuideTraceAt = 0L
     private var lastVisibilitySignature = ""
     private var lastVisibilityLogAt = 0L
 
@@ -143,7 +145,16 @@ class OptimizedOfferEngine : AccessibilityService() {
         visualDebug?.observe(event, pkgName)
         if (GuidedSettingsState.isActive(this) && (pkgName == "com.android.settings" || pkgName == "com.google.android.projection.gearhead")) {
             val guide = GuidedSettingsState.guide(this)
-            val seen = guidance?.inspect(rootInActiveWindow, guide, GuidedSettingsState.step(this)) == true
+            val step = GuidedSettingsState.step(this)
+            val trace = "$guide:$step:$pkgName:${event.eventType}:${event.windowId}"
+            val traceAt = android.os.SystemClock.elapsedRealtime()
+            if (trace != lastGuideTrace || traceAt - lastGuideTraceAt >= 3000L) {
+                lastGuideTrace = trace
+                lastGuideTraceAt = traceAt
+                InternalDiagnosticsLogger.logInteraction(this, "GUIDE_TRACE",
+                    "guide=$guide step=$step package=$pkgName eventType=${event.eventType} windowId=${event.windowId}")
+            }
+            val seen = guidance?.inspect(rootInActiveWindow, guide, step) == true
             GuidedSettingsState.setTargetSeen(this, seen)
             return
         }
