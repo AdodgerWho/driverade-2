@@ -41,7 +41,7 @@ object InternalDiagnosticsLogger {
         }
 
         try {
-            file.writeText(header)
+            FileWriter(file, true).use { writer -> writer.append("\n").append(header) }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize diagnostic session", e)
         }
