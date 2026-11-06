@@ -36,6 +36,7 @@ object InternalDiagnosticsLogger {
         val header = buildString {
             append("=== Driverade Diagnostics & Interaction Log ===\n")
             append("Timestamp: $timestamp\n")
+            append("Version: 3.63\n")
             append("Target Rate: $${prefs.targetHourlyRate} | Min Payout: $${prefs.minPayout}\n")
             append("--------------------------------------------------\n")
         }

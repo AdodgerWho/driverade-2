@@ -1,0 +1,91 @@
+--- a/.github/workflows/build.yml
++++ b/.github/workflows/build.yml
+@@ -12,19 +12,47 @@
+     runs-on: ubuntu-latest
+     steps:
+       - uses: actions/checkout@v4
++
+       - name: Set up JDK 17
+         uses: actions/setup-java@v4
+         with:
+           java-version: '17'
+           distribution: 'temurin'
++
++      - name: Cache Persistent Signing Keystore
++        uses: actions/cache@v4
++        with:
++          path: driverade-debug.keystore
++          key: driverade-persistent-signing-keystore-v1
++
++      - name: Ensure Persistent Keystore Exists
++        run: |
++          if [ ! -f driverade-debug.keystore ]; then
++            keytool -genkeypair -v \
++              -keystore driverade-debug.keystore \
++              -alias driverade_key \
++              -keyalg RSA \
++              -keysize 2048 \
++              -validity 10000 \
++              -storepass driverade_password \
++              -keypass driverade_password \
++              -dname "CN=Driverade, OU=Mobile, O=Driverade, L=Richfield, ST=MN, C=US"
++          fi
++
+       - name: Setup Gradle
+         uses: gradle/actions/setup-gradle@v3
+         with:
+           gradle-version: '8.7'
+-      - name: Build Debug APK
++
++      - name: Build Driverade APK
+         run: gradle assembleDebug
+-      - name: Upload APK
++
++      - name: Rename Output to Driverade.apk
++        run: |
++          cp app/build/outputs/apk/debug/*.apk app/build/outputs/apk/debug/Driverade.apk
++
++      - name: Upload Driverade APK
+         uses: actions/upload-artifact@v4
+         with:
+-          name: driverade-v3.63-debug
+-          path: app/build/outputs/apk/debug/*.apk
++          name: Driverade
++          path: app/build/outputs/apk/debug/Driverade.apk
+
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -14,7 +14,20 @@
+         versionCode = 363
+         versionName = "3.63"
+ 
++        setProperty("archivesBaseName", "Driverade")
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
++    }
++
++    signingConfigs {
++        getByName("debug") {
++            val keystoreFile = rootProject.file("driverade-debug.keystore")
++            if (keystoreFile.exists()) {
++                storeFile = keystoreFile
++                storePassword = "driverade_password"
++                keyAlias = "driverade_key"
++                keyPassword = "driverade_password"
++            }
++        }
+     }
+ 
+     buildFeatures {
+@@ -22,8 +35,12 @@
+     }
+ 
+     buildTypes {
++        debug {
++            signingConfig = signingConfigs.getByName("debug")
++        }
+         release {
+             isMinifyEnabled = false
++            signingConfig = signingConfigs.getByName("debug")
+             proguardFiles(
+                 getDefaultProguardFile("proguard-android-optimize.txt"),
+                 "proguard-rules.pro"

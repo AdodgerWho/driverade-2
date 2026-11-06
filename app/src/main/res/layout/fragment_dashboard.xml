@@ -11,7 +11,6 @@
         android:orientation="vertical"
         android:padding="16dp">
 
-        <!-- Hero Gradient Header -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -36,7 +35,6 @@
                 android:textColor="#CBD5E1"
                 android:textSize="13sp" />
 
-            <!-- Floating Status Pills -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -71,7 +69,6 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Modular Page Navigation Bar -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -103,41 +100,12 @@
                 android:text="Settings" />
         </LinearLayout>
 
-        <!-- PAGE 1: DASHBOARD -->
         <LinearLayout
             android:id="@+id/sectionDashboard"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:orientation="vertical">
-
-            <!-- Shift Time & Status Tracker Card -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                android:background="#1E293B"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="ONLINE SHIFT &amp; STATUS TRACKER"
-                    android:textColor="#38BDF8"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/tvShiftTracker"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:text="Shift Time: 00.0 hrs • Status: Initializing..."
-                    android:textColor="#FFFFFF"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -227,7 +195,6 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- PAGE 2: HEATMAPS / DENSITY -->
         <LinearLayout
             android:id="@+id/sectionHeatmaps"
             android:layout_width="match_parent"
@@ -256,7 +223,6 @@
                 android:textSize="14sp" />
         </LinearLayout>
 
-        <!-- PAGE 3: SETTINGS & DIAGNOSTICS -->
         <LinearLayout
             android:id="@+id/sectionSettings"
             android:layout_width="match_parent"
@@ -289,13 +255,6 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
                 android:text="Email Diagnostics Bug Report" />
-            
-            <Button
-                android:id="@+id/btnExportLogsLocally"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="Export Logs Locally (Downloads)" />
         </LinearLayout>
 
     </LinearLayout>

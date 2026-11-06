@@ -11,13 +11,41 @@ android {
         applicationId = "com.driverade"
         minSdk = 26
         targetSdk = 34
-        versionCode = 62
-        versionName = "3.62"
+        versionCode = 363
+        versionName = "3.63"
+
+        setProperty("archivesBaseName", "Driverade")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        getByName("debug") {
+            val keystoreFile = rootProject.file("driverade-debug.keystore")
+            if (keystoreFile.exists()) {
+                storeFile = keystoreFile
+                storePassword = "driverade_password"
+                keyAlias = "driverade_key"
+                keyPassword = "driverade_password"
+            }
+        }
     }
 
     buildFeatures {
         viewBinding = true
+    }
+
+    buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
     }
 
     compileOptions {
