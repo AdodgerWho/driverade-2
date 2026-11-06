@@ -11,5 +11,10 @@ internal class DiagnosticSqliteStore(context: Context) : SQLiteOpenHelper(contex
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
     fun add(time: Long, category: String, detail: String) {
         writableDatabase.execSQL("INSERT INTO events(time_ms,category,detail) VALUES(?,?,?)", arrayOf(time, category, detail))
+        if (time % 97L == 0L) prune(time)
+    }
+    fun prune(now: Long) {
+        writableDatabase.delete("events", "time_ms < ?", arrayOf((now - 2592000000L).toString()))
+        writableDatabase.execSQL("DELETE FROM events WHERE id NOT IN (SELECT id FROM events ORDER BY id DESC LIMIT 50000)")
     }
 }
