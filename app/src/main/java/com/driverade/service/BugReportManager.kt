@@ -46,9 +46,14 @@ object BugReportManager {
         }
     }
 
-    fun exportLogsLocally(context: Context, prefs: DriverPreferences): Boolean {
+    fun exportLogsLocally(context: Context, prefs: DriverPreferences, allSessions: Boolean = true): Boolean {
         val sourceFile = File(context.filesDir, "driverade_diagnostics.txt")
-        val fileName = "driverade_diagnostics_${System.currentTimeMillis()}.txt"
+        val fileName = "driverade_diagnostics_${if (allSessions) "all" else "current"}_${System.currentTimeMillis()}.txt"
+        val exportText = InternalDiagnosticsLogger.exportLog(context, allSessions)
+        if (exportText.isEmpty()) {
+            Toast.makeText(context, "No diagnostic records for this selection", Toast.LENGTH_SHORT).show()
+            return false
+        }
 
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -62,9 +67,7 @@ object BugReportManager {
                 val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
                 if (uri != null) {
                     resolver.openOutputStream(uri)?.use { outputStream ->
-                        FileInputStream(sourceFile).use { inputStream ->
-                            inputStream.copyTo(outputStream)
-                        }
+                        outputStream.write(exportText.toByteArray(Charsets.UTF_8))
                     }
                     Toast.makeText(context, "Exported to Downloads/$fileName", Toast.LENGTH_LONG).show()
                     true
@@ -75,7 +78,7 @@ object BugReportManager {
                 val targetDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
                 if (!targetDir.exists()) targetDir.mkdirs()
                 val targetFile = File(targetDir, fileName)
-                sourceFile.copyTo(targetFile, overwrite = true)
+                targetFile.writeText(exportText)
                 Toast.makeText(context, "Exported to ${targetFile.absolutePath}", Toast.LENGTH_LONG).show()
                 true
             }
