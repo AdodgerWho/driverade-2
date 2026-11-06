@@ -230,7 +230,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.btnExportLogsLocally?.setOnClickListener {
-            BugReportManager.exportLogsLocally(this, prefs)
+            AlertDialog.Builder(this)
+                .setTitle("Export diagnostics")
+                .setItems(arrayOf("Current work session", "All retained sessions")) { _, choice ->
+                    BugReportManager.exportLogsLocally(this, prefs, allSessions = choice == 1)
+                }
+                .show()
         }
     }
 

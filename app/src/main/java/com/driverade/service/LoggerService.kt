@@ -41,7 +41,7 @@ class LoggerService : Service() {
             val file = getDiagnosticsFile(context)
             val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
             try {
-                FileWriter(file, false).use { writer ->
+                FileWriter(file, true).use { writer ->
                     writer.append("Driverade Diagnostics - $timestamp\n")
                     writer.append("Version: 3.62\n")
                     writer.append("Target Rate: $${prefs.targetHourlyRate}\n")
