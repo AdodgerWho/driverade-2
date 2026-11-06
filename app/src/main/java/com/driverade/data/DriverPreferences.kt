@@ -18,6 +18,23 @@ class DriverPreferences(context: Context) {
         get() = prefs.getFloat(KEY_MIN_PAYOUT, 10.0f).toDouble()
         set(value) = prefs.edit().putFloat(KEY_MIN_PAYOUT, value.toFloat()).apply()
 
+    /** Both modes default off until the driver opts in. */
+    var alerterEnabled: Boolean
+        get() = prefs.getBoolean("alerter_enabled", false)
+        set(value) = prefs.edit().putBoolean("alerter_enabled", value).apply()
+
+    var loggerEnabled: Boolean
+        get() = prefs.getBoolean("logger_enabled", false)
+        set(value) = prefs.edit().putBoolean("logger_enabled", value).apply()
+
+    var todayOffersCount: Int
+        get() = prefs.getInt("today_offers_count", 0)
+        set(value) = prefs.edit().putInt("today_offers_count", value.coerceAtLeast(0)).apply()
+
+    var todayGoodOffersCount: Int
+        get() = prefs.getInt("today_good_offers_count", 0)
+        set(value) = prefs.edit().putInt("today_good_offers_count", value.coerceAtLeast(0)).apply()
+
     var todayEarnings: Double
         get() = prefs.getFloat(KEY_TODAY_EARNINGS, 0.0f).toDouble()
         set(value) = prefs.edit().putFloat(KEY_TODAY_EARNINGS, value.toFloat()).apply()
