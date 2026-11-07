@@ -141,6 +141,38 @@ class OptimizedOfferEngine : AccessibilityService() {
         }
     }
 
+    /**
+     * Bounded metadata for background overlays that yield zero text nodes.
+     * No view text, content descriptions, rider details or screen pixels are logged.
+     */
+    private fun logZeroNodeWindowTrace(event: AccessibilityEvent, eventPackage: String, captureId: String) {
+        try {
+            val all = windows.orEmpty()
+            val eventRoot = event.source
+            val activeRoot = rootInActiveWindow
+            val description = all.take(12).joinToString(";") { window ->
+                val root = try { window.root } catch (_: Exception) { null }
+                val pkg = root?.packageName?.toString() ?: "UNKNOWN"
+                val bounds = android.graphics.Rect()
+                try { window.getBoundsInScreen(bounds) } catch (_: Exception) { }
+                "id=${window.id},type=${window.type},layer=${window.layer}," +
+                    "pkg=$pkg,root=${root != null},children=${root?.childCount ?: -1}," +
+                    "focused=${window.isFocused},active=${window.isActive}," +
+                    "bounds=${bounds.width()}x${bounds.height()}," +
+                    "eventWindow=${window.id == event.windowId}"
+            }
+            InternalDiagnosticsLogger.logInteraction(this, "UBER_ZERO_NODE_WINDOWS",
+                "capture=$captureId pkg=$eventPackage eventWindow=${event.windowId} " +
+                    "eventSource=${eventRoot != null} eventChildren=${eventRoot?.childCount ?: -1} " +
+                    "activeRootPkg=${activeRoot?.packageName ?: "UNKNOWN"} " +
+                    "windowCount=${all.size} inspected=${minOf(all.size, 12)} windows=[$description] " +
+                    "text=OMITTED")
+        } catch (e: Exception) {
+            InternalDiagnosticsLogger.logInteraction(this, "UBER_ZERO_NODE_WINDOWS_ERROR",
+                "capture=$captureId exception=${e.javaClass.simpleName}")
+        }
+    }
+
     private var lastShadowSignature: String = ""
     private var lastShadowTime = 0L
     private var lastOfferSignature: String = ""
@@ -197,7 +229,7 @@ class OptimizedOfferEngine : AccessibilityService() {
         if (event == null) return
         val pkgName = event.packageName?.toString() ?: "unknown.package"
         val captureId = "${System.currentTimeMillis()}-${++diagnosticCaptureSequence}"
-        visualDebug?.observe(event, pkgName)
+        visualDebug?.observe(event, pkgName, captureId)
         if (GuidedSettingsState.isActive(this) && (pkgName == "com.android.settings" || pkgName == "com.google.android.projection.gearhead")) {
             val guide = GuidedSettingsState.guide(this)
             val step = GuidedSettingsState.step(this)
@@ -262,7 +294,11 @@ class OptimizedOfferEngine : AccessibilityService() {
         InternalDiagnosticsLogger.logInteraction(this, "NODE_SCRAPE", "capture=$captureId nodes=${collectedNodes.size} boundedText=${collectedNodes.take(30).map { it.take(80) }}")
 
         if (collectedNodes.isEmpty()) {
-            InternalDiagnosticsLogger.logInteraction(this, "PARSE_ABORT", "No text nodes found to evaluate.")
+            if (platform == "UBER" || platform == "UBER_EATS") {
+                logZeroNodeWindowTrace(event, pkgName, captureId)
+            }
+            InternalDiagnosticsLogger.logInteraction(this, "PARSE_ABORT",
+                "capture=$captureId reason=NO_ACCESSIBILITY_TEXT screenshotOcr=DIAGNOSTIC_ONLY")
             return
         }
 
