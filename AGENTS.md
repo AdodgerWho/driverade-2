@@ -30,6 +30,16 @@ This policy applies to coding assistants and human changes in this repository.
 6. Close superseded PRs **only after** verifying their needed changes exist elsewhere, referencing the replacement PR or commit. Delete stale branches only after verifying there is no unique work or diagnostics.
 7. Keep a short PR ledger so the next developer knows what is verified, what is waiting, and why.
 
+## Versioned Google Drive archive
+
+- Use the existing Google Drive **Update builds** folder as the canonical archive for each tested iteration: https://drive.google.com/drive/folders/1gsKOPoqRIqt5wqnT3G8RSI245wroq0-c . Keep an individual, clearly named folder per version/build/commit rather than overwriting an older APK.
+- For each build worth retaining, copy the signed or debug APK artifact **when available**, plus `BUILD_INFO.md` (version, build/run ID, SHA, source branch, signing/update compatibility and timestamp), `CHANGELOG.md` (features/fixes and originating PRs), `TEST_CHECKLIST.md` (tests, outcomes, verification provenance, known failures and limitations), and pertinent **sanitized, explicitly approved** diagnostics or regression fixtures.
+- Mark each iteration `EXPERIMENTAL`, `CANDIDATE`, or `VERIFIED` in its documentation; never infer verification from successful compilation alone. When a feature is checked off in a later build, reference the prior originating PR and the later verified build in both records.
+- GitHub remains the canonical source-code and change-history repository; Drive holds reproducible build artifacts and supporting documents, not uncontrolled copies of the repository.
+- Keep the existing Drive **Driverade** folder as a curated home for reference screenshots and historical diagnostics: https://drive.google.com/drive/folders/1nOveqTivf5JBPPHoM9oTSqqSkAvcdgjh . Inventory and categorize apparent clutter before relocating it. Do not mass-delete or empty that folder without an explicit reviewed retention decision.
+- Do not automatically copy live screenshots, rider or location information, raw accessibility captures, or other personal data to Drive. Keep diagnostics local unless specifically selected for sharing, and redact or minimize identifying data before archival.
+- Archive after an actual tested iteration or release candidate; do not create empty placeholder build folders or claim files have been copied before the upload and readback succeed.
+
 ## Safety guardrails
 
 - A green build alone does not complete a PR checklist, but a fully checked-off PR is presumed merge-ready. Only concrete failures, changed code/dependencies, or conflicts justify withholding integration. Preserve approval requirements for stable-branch releases and destructive operations; do not force-push or discard unique work.
