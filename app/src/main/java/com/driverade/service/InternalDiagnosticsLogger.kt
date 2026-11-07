@@ -2,6 +2,7 @@ package com.driverade.service
 
 import android.content.Context
 import android.util.Log
+import com.driverade.BuildConfig
 import com.driverade.data.DriverPreferences
 import java.io.File
 import java.io.FileWriter
@@ -33,6 +34,7 @@ object InternalDiagnosticsLogger {
 
     /** Reconnecting the accessibility service must never erase previous evidence. */
     fun initializeSession(context: Context, prefs: DriverPreferences) {
+        logInteraction(context, "BUILD_ID", "version=${BuildConfig.VERSION_NAME} code=${BuildConfig.VERSION_CODE} type=${BuildConfig.BUILD_TYPE} device=${android.os.Build.MANUFACTURER}/${android.os.Build.MODEL} sdk=${android.os.Build.VERSION.SDK_INT}")
         logInteraction(context, "SERVICE_CONNECTED", "Diagnostic service attached")
     }
 
