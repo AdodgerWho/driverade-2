@@ -15,8 +15,9 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Opt-in, on-device diagnostic capture. Capture is not gated on OCR keywords:
- * inaccessible offer cards must still be captured for investigation.
+ * Live Uber OCR is local and transient even when visual-debug PNG saving is off.
+ * Opt-in screenshots are persisted only when explicitly enabled.
+ * Capture is not gated on OCR keywords: inaccessible cards must still be read.
  */
 internal class VisualDebugCapture(private val service: AccessibilityService) {
     private val preferences = service.getSharedPreferences("driverade_visual_debug", 0)
@@ -31,7 +32,7 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
     fun isEnabled(): Boolean = preferences.getBoolean("enabled", false)
 
     fun observe(event: AccessibilityEvent, pkg: String, captureId: String) {
-        if (!isEnabled()) return
+        if (!isEnabled() && pkg != "com.ubercab.driver") return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             log("UNSUPPORTED", "api=${Build.VERSION.SDK_INT}")
             return
@@ -42,15 +43,35 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
             (GuidedSettingsState.isActive(service) &&
                 (pkg == "com.android.settings" || pkg == "com.google.android.projection.gearhead"))
         if (!target) return
+        capture(pkg, captureId, "EVENT")
+    }
+
+    /** Periodic recovery from missed / too-early Uber accessibility events. */
+    fun observeTimedUber(captureId: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+            capture("com.ubercab.driver", captureId, "TIMED")
+    }
+
+    private var uberOcrListener: ((String, String) -> Unit)? = null
+    fun setUberOcrListener(listener: (String, String) -> Unit) {
+        uberOcrListener = listener
+    }
+    fun close() {
+        uberOcrListener = null
+    }
+
+    private fun capture(pkg: String, captureId: String, trigger: String) {
         val now = SystemClock.elapsedRealtime()
         if (now - lastCaptureElapsed < intervalMs || !busy.compareAndSet(false, true)) return
         lastCaptureElapsed = now
-        log("REQUESTED", "capture=$captureId package=$pkg eventType=${event.eventType} eventWindow=${event.windowId}")
+        val saveDebug = isEnabled()
+        log("REQUESTED", "capture=" + captureId + " package=" + pkg +
+            " trigger=" + trigger + " savePng=" + saveDebug)
         try {
             service.takeScreenshot(Display.DEFAULT_DISPLAY, service.mainExecutor,
                 object : AccessibilityService.TakeScreenshotCallback {
                     override fun onFailure(errorCode: Int) {
-                        log("CAPTURE_FAILED", "capture=$captureId package=$pkg code=$errorCode")
+                        log("CAPTURE_FAILED", "capture=" + captureId + " package=" + pkg + " code=" + errorCode)
                         busy.set(false)
                     }
                     override fun onSuccess(result: AccessibilityService.ScreenshotResult) {
@@ -65,13 +86,14 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
                                 finally { hardware.recycle() }
                             } finally { buffer.close() }
                             val image = bitmap ?: error("Bitmap copy returned null")
-                            log("CAPTURE_SUCCESS", "capture=$captureId width=${image.width} height=${image.height} source=DISPLAY")
-                            saveAndVerify(image, pkg, captureId)
-                            if (pkg == "com.ubercab.driver") {
-                                inspectUberImage(image, captureId)
-                            }
+                            log("CAPTURE_SUCCESS", "capture=" + captureId +
+                                " width=" + image.width + " height=" + image.height +
+                                " source=DISPLAY")
+                            if (saveDebug) saveAndVerify(image, pkg, captureId)
+                            if (pkg == "com.ubercab.driver") inspectUberImage(image, captureId)
                         } catch (error: Exception) {
-                            log("SAVE_FAILED", "capture=$captureId reason=${error.javaClass.simpleName}")
+                            log("CAPTURE_PROCESS_FAILED", "capture=" + captureId +
+                                " reason=" + error.javaClass.simpleName)
                         } finally {
                             bitmap?.recycle()
                             busy.set(false)
@@ -79,7 +101,8 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
                     }
                 })
         } catch (error: Exception) {
-            log("REQUEST_FAILED", "reason=${error.javaClass.simpleName}")
+            log("REQUEST_FAILED", "capture=" + captureId +
+                " reason=" + error.javaClass.simpleName)
             busy.set(false)
         }
     }
@@ -101,7 +124,8 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
                 .addOnSuccessListener { result ->
                     val summary = UberScreenOcrDiagnostics.inspect(result.text)
                     InternalDiagnosticsLogger.logInteraction(service, "UBER_OCR_DIAGNOSTIC",
-                        "capture=$captureId " + summary.diagnostic())
+                        "capture=" + captureId + " " + summary.diagnostic())
+                    uberOcrListener?.invoke(captureId, result.text)
                 }
                 .addOnFailureListener { error ->
                     log("OCR_FAILED", "capture=$captureId reason=${error.javaClass.simpleName}")
