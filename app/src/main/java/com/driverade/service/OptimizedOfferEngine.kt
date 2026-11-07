@@ -221,15 +221,16 @@ class OptimizedOfferEngine : AccessibilityService() {
         InternalDiagnosticsLogger.logInteraction(this, "PLATFORM_MATCH", "capture=$captureId platform=$platform eventType=${event.eventType} eventTime=${event.eventTime} windowId=${event.windowId} class=${event.className}")
 
         val collectedNodes = LinkedHashSet<String>()
+        val fieldNodes = mutableListOf<UberOfferFieldResolver.Node>()
 
         event.source?.let { src ->
-            traverseNodeTree(src, collectedNodes, 0)
+            traverseNodeTree(src, collectedNodes, 0, fieldNodes, event.windowId)
         }
 
         rootInActiveWindow?.let { root ->
             val rootPkg = root.packageName?.toString()
             if ((platform != "UBER" && platform != "UBER_EATS") || rootPkg == pkgName) {
-                traverseNodeTree(root, collectedNodes, 0)
+                traverseNodeTree(root, collectedNodes, 0, fieldNodes, event.windowId)
             }
         }
 
@@ -238,7 +239,7 @@ class OptimizedOfferEngine : AccessibilityService() {
                 windowInfo.root?.let { winRoot ->
                     val winPkg = winRoot.packageName?.toString() ?: pkgName
                     if (if (platform == "UBER" || platform == "UBER_EATS") winPkg == pkgName else resolvePlatform(winPkg) != null) {
-                        traverseNodeTree(winRoot, collectedNodes, 0)
+                        traverseNodeTree(winRoot, collectedNodes, 0, fieldNodes, windowInfo.id)
                     }
                 }
             }
@@ -254,6 +255,11 @@ class OptimizedOfferEngine : AccessibilityService() {
         }
 
         val rawList = collectedNodes.toList()
+        if (platform == "UBER" || platform == "UBER_EATS") {
+            val resolved = UberOfferFieldResolver.resolve(fieldNodes)
+            InternalDiagnosticsLogger.logInteraction(this, "UBER_FIELD_PROVENANCE",
+                "capture=$captureId " + resolved.diagnostic())
+        }
         val joinedTextLower = rawList.joinToString(" ").lowercase(Locale.US)
         val hasValidKeyword = OFFER_KEYWORDS.any { joinedTextLower.contains(it) } ||
             joinedTextLower.contains("tip") || joinedTextLower.contains("earnings")
@@ -368,12 +374,22 @@ class OptimizedOfferEngine : AccessibilityService() {
     private fun traverseNodeTree(
         node: AccessibilityNodeInfo?,
         results: MutableSet<String>,
-        depth: Int
+        depth: Int,
+        fieldNodes: MutableList<UberOfferFieldResolver.Node>,
+        windowId: Int
     ) {
         if (node == null || depth > 28) return
 
-        node.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { results.add(it) }
-        node.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { results.add(it) }
+        val viewId = node.viewIdResourceName
+        val visible = node.isVisibleToUser
+        node.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            results.add(it)
+            fieldNodes.add(UberOfferFieldResolver.Node(it, viewId, windowId, visible))
+        }
+        node.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            results.add(it)
+            fieldNodes.add(UberOfferFieldResolver.Node(it, viewId, windowId, visible))
+        }
 
         val count = node.childCount
         for (i in 0 until count) {
@@ -383,7 +399,7 @@ class OptimizedOfferEngine : AccessibilityService() {
                 null
             }
             if (child != null) {
-                traverseNodeTree(child, results, depth + 1)
+                traverseNodeTree(child, results, depth + 1, fieldNodes, windowId)
             }
         }
     }
