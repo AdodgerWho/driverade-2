@@ -44,11 +44,14 @@ class OptimizedOfferEngine : AccessibilityService() {
                 }
                 val requestId = intent.getStringExtra(EXTRA_TEST_REQUEST_ID).orEmpty()
                 val nodes = raw.lines().map { it.trim() }.filter { it.isNotEmpty() }.take(60)
-                val reason = OfferScreenClassifier.rejectionReason(nodes)
-                val accepted = OfferScreenClassifier.isActiveOffer(nodes)
-                val evaluation = if (accepted) parseOfferNodes(platform, "synthetic.test", nodes) else null
+                val parsed = RestoredOfferParser.fromTree(platform, nodes)
+                val reason = parsed.reason
+                val accepted = parsed.offer != null
+                val evaluation = parsed.offer?.let { evaluationOf(it, "synthetic.test") }
                 val status = when {
-                    !accepted -> "GATE_REJECT"
+                    !accepted && (reason.startsWith("missing_") ||
+                        reason == "history_or_navigation" ||
+                        reason == "unsupported_platform") -> "GATE_REJECT"
                     evaluation == null -> "PARSE_FAIL"
                     else -> "PASS"
                 }
@@ -215,6 +218,8 @@ class OptimizedOfferEngine : AccessibilityService() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         guidance = GuideHighlighter(this)
         visualDebug = VisualDebugCapture(this)
+        visualDebug?.setUberOcrListener(::handleRestoredOcr)
+        mainHandler.postDelayed(restoredTick, 1_200L)
         val filter = IntentFilter().apply { addAction(ACTION_TEST_ALERT_PILL); addAction(ACTION_TEST_OFFER_CARD) }
         if (Build.VERSION.SDK_INT >= 33) {
             registerReceiver(testPillReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
@@ -273,145 +278,178 @@ class OptimizedOfferEngine : AccessibilityService() {
         }
 
         InternalDiagnosticsLogger.logInteraction(this, "PLATFORM_MATCH", "capture=$captureId platform=$platform eventType=${event.eventType} eventTime=${event.eventTime} windowId=${event.windowId} class=${event.className}")
+        if (platform == "UBER") lastUberEventElapsed = android.os.SystemClock.elapsedRealtime()
 
-        val collectedNodes = LinkedHashSet<String>()
-        val fieldNodes = mutableListOf<UberOfferFieldResolver.Node>()
+        processRestoredTrees(platform, pkgName, captureId, event.source, event.windowId)
+    }
 
-        event.source?.let { src ->
-            traverseNodeTree(src, collectedNodes, 0, fieldNodes, event.windowId)
-        }
-
-        rootInActiveWindow?.let { root ->
-            val rootPkg = root.packageName?.toString()
-            if ((platform != "UBER" && platform != "UBER_EATS") || rootPkg == pkgName) {
-                traverseNodeTree(root, collectedNodes, 0, fieldNodes, event.windowId)
-            }
-        }
-
+    /** Old Driverlogger's event + timed multi-window tree collector. */
+    private fun processRestoredTrees(
+        platform: String, packageName: String, captureId: String,
+        eventSource: AccessibilityNodeInfo?, eventWindowId: Int
+    ) {
+        val frames = linkedMapOf<Int, AccessibilityNodeInfo>()
         try {
-            windows?.forEach { windowInfo ->
-                windowInfo.root?.let { winRoot ->
-                    val winPkg = winRoot.packageName?.toString() ?: pkgName
-                    if (if (platform == "UBER" || platform == "UBER_EATS") winPkg == pkgName else resolvePlatform(winPkg) != null) {
-                        traverseNodeTree(winRoot, collectedNodes, 0, fieldNodes, windowInfo.id)
-                    }
+            windows.orEmpty().forEach { w ->
+                val root = runCatching { w.root }.getOrNull()
+                if (root?.packageName?.toString() == packageName) {
+                    frames[w.id] = root
                 }
+            }
+            val active = runCatching { rootInActiveWindow }.getOrNull()
+            if (active?.packageName?.toString() == packageName &&
+                !frames.containsKey(active.windowId)) {
+                frames[active.windowId] = active
+            }
+            if (eventSource?.packageName?.toString() == packageName &&
+                !frames.containsKey(eventWindowId)) {
+                frames[eventWindowId] = eventSource
             }
         } catch (e: Exception) {
-            InternalDiagnosticsLogger.logInteraction(this, "WARN", "Multi-window inspection warning: ${e.message}")
+            InternalDiagnosticsLogger.logInteraction(this, "RESTORED_WINDOW_ERROR",
+                "capture=" + captureId + " exception=" + e.javaClass.simpleName)
         }
 
-        InternalDiagnosticsLogger.logInteraction(this, "NODE_SCRAPE", "capture=$captureId nodes=${collectedNodes.size} boundedText=${collectedNodes.take(30).map { it.take(80) }}")
-
-        if (collectedNodes.isEmpty()) {
-            if (platform == "UBER" || platform == "UBER_EATS") {
-                logZeroNodeWindowTrace(event, pkgName, captureId)
+        if (frames.isEmpty()) {
+            InternalDiagnosticsLogger.logInteraction(this, "RESTORED_TREE_MISS",
+                "capture=" + captureId + " platform=" + platform +
+                    " reason=NO_OWNED_ROOT rawText=OMITTED")
+            return
+        }
+        var foundText = false
+        frames.forEach { (winId, root) ->
+            val texts = mutableListOf<String>()
+            val fields = mutableListOf<UberOfferFieldResolver.Node>()
+            traverseNodeTree(root, texts, 0, fields, winId)
+            if (texts.isEmpty()) {
+                InternalDiagnosticsLogger.logInteraction(this, "RESTORED_TREE_MISS",
+                    "capture=" + captureId + " windowId=" + winId +
+                        " reason=NO_TEXT nodesMayExist=true childCount=" + root.childCount)
+                return@forEach
             }
-            InternalDiagnosticsLogger.logInteraction(this, "PARSE_ABORT",
-                "capture=$captureId reason=NO_ACCESSIBILITY_TEXT screenshotOcr=DIAGNOSTIC_ONLY")
-            return
-        }
-
-        val resolvedUber = if (platform == "UBER" || platform == "UBER_EATS") {
-            UberOfferFieldResolver.resolve(fieldNodes).also { resolved ->
-                InternalDiagnosticsLogger.logInteraction(this, "UBER_FIELD_PROVENANCE",
-                    "capture=$captureId " + resolved.diagnostic())
-            }
-        } else null
-        // A verified payout is tied to a single offer window. Avoid unrelated
-        // windows in its calculation; preserve original behavior otherwise.
-        val rawList = if (resolvedUber?.payout != null && resolvedUber.windowId != null) {
-            fieldNodes.asSequence().filter { it.visible && it.windowId == resolvedUber.windowId }
-                .map { it.text }.distinct().toList()
-        } else collectedNodes.toList()
-        val joinedTextLower = rawList.joinToString(" ").lowercase(Locale.US)
-        val hasValidKeyword = OFFER_KEYWORDS.any { joinedTextLower.contains(it) } ||
-            joinedTextLower.contains("tip") || joinedTextLower.contains("earnings")
-
-        if (!hasValidKeyword && platform != "UBER" && platform != "UBER_EATS") {
-            InternalDiagnosticsLogger.logInteraction(this, "KEYWORD_DROP", "Ignored: Missing mandatory offer validation keywords.")
-            return
-        }
-
-        // Observe explicitly labelled tip amounts on history screens, independently of offers.
-        TipLedger.observe(this, platform, rawList)
-        if (platform != "UBER" && platform != "UBER_EATS" && !OfferScreenClassifier.isActiveOffer(rawList)) {
-            InternalDiagnosticsLogger.logInteraction(this, "OFFER_GATE_DROP", "Offer screen rejected: ${OfferScreenClassifier.rejectionReason(rawList)}")
-            return
-        }
-
-        if (platform == "UBER" || platform == "UBER_EATS") {
-            val payoutPresent = rawList.any { PAYOUT_REGEX.containsMatchIn(it) }
-            val durationPresent = HOURS_MINUTES_REGEX.containsMatchIn(rawList.joinToString(" ")) ||
-                rawList.any { MINUTES_REGEX.containsMatchIn(it) }
-            val distancePresent = rawList.any { MILES_REGEX.containsMatchIn(it) }
-            InternalDiagnosticsLogger.logInteraction(this, "UBER_CANDIDATE",
-                "nodes=${rawList.size} keyword=$hasValidKeyword payout=$payoutPresent " +
-                    "duration=$durationPresent distance=$distancePresent; raw text withheld")
-        }
-
-        // Map pills, earnings and pickup navigation are not incoming offers.
-        // Keep candidate telemetry, but only actionable offer screens can alert.
-        if ((platform == "UBER" || platform == "UBER_EATS") &&
-            !OfferScreenClassifier.isActiveOffer(rawList)) {
-            InternalDiagnosticsLogger.logInteraction(this, "UBER_OFFER_GATE_DROP",
-                "reason=${OfferScreenClassifier.rejectionReason(rawList)} " +
-                    "windowId=${event.windowId} nodes=${rawList.size}; text withheld")
-            return
-        }
-
-        InternalDiagnosticsLogger.logInteraction(this, "PARSE_INPUT", "capture=$captureId payoutCandidates=${rawList.flatMap { PAYOUT_REGEX.findAll(it).map { m -> m.value }.toList() }.take(15)} durationCandidates=${MINUTES_REGEX.findAll(joinedTextLower).map { it.value }.take(15).toList()} distanceCandidates=${MILES_REGEX.findAll(joinedTextLower).map { it.value }.take(15).toList()}")
-        val evaluation = parseOfferNodes(platform, pkgName, rawList, resolvedUber?.payout)
-        // Shadow comparison reads the same gated live nodes. Its output is diagnostic only.
-        // Do not alter the existing parse result, alerts, dedupe or offer statistics.
-        if (platform == "UBER" || platform == "LYFT") {
-            val signature = platform + "|" + rawList.joinToString("\u001f").hashCode()
-            val nowShadow = android.os.SystemClock.elapsedRealtime()
-            if (signature != lastShadowSignature || nowShadow - lastShadowTime >= 60_000L) {
-                lastShadowSignature = signature
-                lastShadowTime = nowShadow
-                try {
-                    val report = OfferParserComparison.compare(platform, rawList, true, evaluation?.let {
-                        OfferParserComparison.ActiveSnapshot(it.payout, it.totalMinutes, it.totalMiles, it.hourlyRate)
+            foundText = true
+            TipLedger.observe(this, platform, texts)
+            val payout = if (platform == "UBER" || platform == "UBER_EATS") {
+                UberOfferFieldResolver.resolve(fields).also { resolved ->
+                    InternalDiagnosticsLogger.logInteraction(this, "UBER_FIELD_PROVENANCE",
+                        "capture=" + captureId + " " + resolved.diagnostic())
+                }.payout
+            } else null
+            val parsed = RestoredOfferParser.fromTree(platform, texts, payout)
+            InternalDiagnosticsLogger.logInteraction(this, "RESTORED_TREE_PARSE",
+                "capture=" + captureId + " windowId=" + winId +
+                    " platform=" + platform + " " + parsed.diagnostic())
+            if (platform == "UBER" || platform == "LYFT") {
+                val report = OfferParserComparison.compare(platform, texts,
+                    parsed.offer != null, parsed.offer?.let {
+                        OfferParserComparison.ActiveSnapshot(
+                            it.payout, it.totalMinutes, it.totalMiles, it.hourlyRate)
                     })
-                    InternalDiagnosticsLogger.logInteraction(this, "PARSER_COMPARISON",
-                        report.diagnostic("LIVE_SHADOW", captureId, "none"))
-                } catch (e: Exception) {
-                    InternalDiagnosticsLogger.logInteraction(this, "PARSER_COMPARISON_ERROR",
-                        "capture=$captureId platform=$platform error=" + e.javaClass.simpleName)
-                }
+                InternalDiagnosticsLogger.logInteraction(this, "PARSER_COMPARISON",
+                    report.diagnostic("LIVE_RESTORED", captureId, parsed.reason))
             }
+            parsed.offer?.let { publishRestoredCandidate(it, packageName, captureId) }
         }
-
-        if (evaluation == null) {
-            InternalDiagnosticsLogger.logInteraction(this, "PARSE_FAIL", "Offer fields invalid or missing; text content withheld for privacy")
-            return
+        if (!foundText) {
+            InternalDiagnosticsLogger.logInteraction(this, "PARSE_ABORT",
+                "capture=" + captureId + " reason=NO_ACCESSIBILITY_TEXT " +
+                    "ocrFallback=ELIGIBLE")
         }
+    }
 
-        InternalDiagnosticsLogger.logInteraction(this, "PARSE_RESULT", "capture=$captureId payout=${evaluation.payout} minutes=${evaluation.totalMinutes} miles=${evaluation.totalMiles} hourly=${evaluation.hourlyRate} target=${evaluation.meetsTarget}")
-        val signature = "${evaluation.platform}_${evaluation.payout}_${evaluation.totalMinutes}_${evaluation.totalMiles}"
-        val now = System.currentTimeMillis()
-        if (signature == lastOfferSignature && (now - lastOfferTimestamp) < 45000L) {
-            InternalDiagnosticsLogger.logInteraction(this, "DEBOUNCE", "capture=$captureId suppressed=true elapsedMs=${now-lastOfferTimestamp}")
+    private fun publishRestoredCandidate(
+        candidate: RestoredOfferParser.Candidate, pkg: String, captureId: String
+    ) {
+        val evaluation = evaluationOf(candidate, pkg)
+        val signature = candidate.platform + "|" + candidate.kind + "|" +
+            candidate.payout + "|" + candidate.pickupMinutes + "|" +
+            candidate.pickupMiles + "|" + candidate.tripMinutes + "|" +
+            candidate.tripMiles
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (signature == lastOfferSignature && now - lastOfferTimestamp < 90_000L) {
+            InternalDiagnosticsLogger.logInteraction(this, "DEBOUNCE",
+                "capture=" + captureId + " suppressed=true source=" + candidate.source)
             return
         }
         lastOfferSignature = signature
         lastOfferTimestamp = now
-
-        InternalDiagnosticsLogger.logInteraction(this, "SUCCESS", "Offer evaluated: Payout=$${evaluation.payout}, Hourly=$${evaluation.hourlyRate}/hr, TargetMet=${evaluation.meetsTarget}")
-
-        // Recognition continues for local telemetry, but output channels are independent.
+        InternalDiagnosticsLogger.logInteraction(this, "PARSE_RESULT",
+            "capture=" + captureId + " source=" + candidate.source +
+                " kind=" + candidate.kind + " payout=" + candidate.payout +
+                " pickupMin=" + candidate.pickupMinutes + " pickupMi=" + candidate.pickupMiles +
+                " tripMin=" + candidate.tripMinutes + " tripMi=" + candidate.tripMiles +
+                " hourly=" + evaluation.hourlyRate + " target=" + evaluation.meetsTarget)
         DriveradeState.recordOffer(evaluation)
         prefs.todayOffersCount += 1
         if (evaluation.meetsTarget) prefs.todayGoodOffersCount += 1
         if (prefs.loggerEnabled) LoggerService.recordOfferDiagnostic(this, prefs, evaluation)
         if (prefs.alerterEnabled) {
-            InternalDiagnosticsLogger.logInteraction(this, "ALERT_DISPATCH", "capture=$captureId live offer alert requested for $platform")
+            InternalDiagnosticsLogger.logInteraction(this, "ALERT_DISPATCH",
+                "capture=" + captureId + " source=" + candidate.source)
             broadcastToAndroidAuto(evaluation)
             showHourlyRateOverlay(evaluation)
         } else {
-            InternalDiagnosticsLogger.logInteraction(this, "ALERT_DISABLED", "Live offer evaluated but alerter is disabled")
+            InternalDiagnosticsLogger.logInteraction(this, "ALERT_DISABLED",
+                "capture=" + captureId + " live offer evaluated, alerter disabled")
         }
+    }
+
+    private fun evaluationOf(
+        c: RestoredOfferParser.Candidate, pkg: String
+    ): OfferEvaluation = OfferEvaluation(
+        platform = c.platform,
+        packageName = pkg,
+        payout = c.payout,
+        totalMiles = c.totalMiles,
+        totalMinutes = c.totalMinutes,
+        hourlyRate = c.hourlyRate,
+        dollarsPerMile = c.dollarsPerMile,
+        meetsTarget = c.hourlyRate >= prefs.targetHourlyRate &&
+            c.payout >= prefs.minPayout,
+        rawNodes = emptyList()
+    )
+
+    private var lastUberEventElapsed = 0L
+    private val restoredTick = object : Runnable {
+        override fun run() {
+            try {
+                val power = getSystemService(POWER_SERVICE) as android.os.PowerManager
+                if (power.isInteractive && ::prefs.isInitialized) {
+                    val present = windows.orEmpty().mapNotNull { w ->
+                        val root = runCatching { w.root }.getOrNull()
+                        val pkg = root?.packageName?.toString()
+                        if (pkg != null && PACKAGE_PLATFORM_MAP.containsKey(pkg)) {
+                            pkg to root
+                        } else null
+                    }.distinctBy { it.first }
+                    present.forEach { (pkg, _) ->
+                        val platform = PACKAGE_PLATFORM_MAP[pkg] ?: return@forEach
+                        if (prefs.isPlatformEnabled(platform)) {
+                            val id = "timed-" + System.currentTimeMillis()
+                            processRestoredTrees(platform, pkg, id, null, -1)
+                        }
+                    }
+                    if (android.os.SystemClock.elapsedRealtime() - lastUberEventElapsed < 8_000L &&
+                        prefs.isPlatformEnabled("UBER")) {
+                        visualDebug?.observeTimedUber("timed-" + System.currentTimeMillis())
+                    }
+                }
+            } catch (e: Exception) {
+                InternalDiagnosticsLogger.logInteraction(this@OptimizedOfferEngine,
+                    "RESTORED_TICK_ERROR", "reason=" + e.javaClass.simpleName)
+            } finally {
+                mainHandler.postDelayed(this, 1_200L)
+            }
+        }
+    }
+
+    private fun handleRestoredOcr(captureId: String, ocr: String) {
+        if (!::prefs.isInitialized || !prefs.isPlatformEnabled("UBER")) return
+        if (android.os.SystemClock.elapsedRealtime() - lastUberEventElapsed > 8_000L) return
+        val parsed = RestoredOfferParser.fromUberOcr(ocr)
+        InternalDiagnosticsLogger.logInteraction(this, "RESTORED_OCR_PARSE",
+            "capture=" + captureId + " " + parsed.diagnostic())
+        parsed.offer?.let { publishRestoredCandidate(it, "com.ubercab.driver", captureId) }
     }
 
     private fun sendSyntheticResult(requestId: String, text: String,
@@ -440,7 +478,7 @@ class OptimizedOfferEngine : AccessibilityService() {
 
     private fun traverseNodeTree(
         node: AccessibilityNodeInfo?,
-        results: MutableSet<String>,
+        results: MutableCollection<String>,
         depth: Int,
         fieldNodes: MutableList<UberOfferFieldResolver.Node>,
         windowId: Int
@@ -472,75 +510,12 @@ class OptimizedOfferEngine : AccessibilityService() {
     }
 
     fun parseOfferNodes(
-        platform: String,
-        packageName: String,
-        texts: List<String>,
+        platform: String, packageName: String, texts: List<String>,
         verifiedPayout: Double? = null
-    ): OfferEvaluation? {
-        var payout = -1.0
-        var totalMinutes = 0.0
-        var totalMiles = 0.0
-
-        val joined = texts.joinToString(" | ")
-
-        for (entry in texts) {
-            if (entry.contains("/hr", ignoreCase = true) || entry.contains("per hour", ignoreCase = true)) {
-                continue
-            }
-            PAYOUT_REGEX.findAll(entry).forEach { match ->
-                val value = match.groupValues[1].toDoubleOrNull() ?: -1.0
-                if (value in 2.0..500.0 && value > payout) {
-                    payout = value
-                }
-            }
+    ): OfferEvaluation? =
+        RestoredOfferParser.fromTree(platform, texts, verifiedPayout).offer?.let {
+            evaluationOf(it, packageName)
         }
-
-        HOURS_MINUTES_REGEX.findAll(joined).forEach { match ->
-            val hrs = match.groupValues[1].toDoubleOrNull() ?: 0.0
-            val mins = match.groupValues[2].toDoubleOrNull() ?: 0.0
-            totalMinutes += (hrs * 60.0) + mins
-        }
-
-        if (totalMinutes == 0.0) {
-            MINUTES_REGEX.findAll(joined).forEach { match ->
-                val mins = match.groupValues[1].toDoubleOrNull() ?: 0.0
-                if (mins in 1.0..300.0) {
-                    totalMinutes += mins
-                }
-            }
-        }
-
-        MILES_REGEX.findAll(joined).forEach { match ->
-            val mi = match.groupValues[1].toDoubleOrNull() ?: 0.0
-            if (mi in 0.1..500.0) {
-                totalMiles += mi
-            }
-        }
-
-        if (verifiedPayout != null && (platform == "UBER" || platform == "UBER_EATS")) {
-            payout = verifiedPayout
-        }
-        if (payout <= 0.0) return null
-
-        if (totalMinutes <= 0.0 || totalMiles <= 0.0) return null
-        val effectiveMinutes = totalMinutes
-        val hourlyRate = (payout / effectiveMinutes) * 60.0
-        val dollarsPerMile = if (totalMiles > 0.0) payout / totalMiles else 0.0
-
-        val meetsTarget = hourlyRate >= prefs.targetHourlyRate && payout >= prefs.minPayout
-
-        return OfferEvaluation(
-            platform = platform,
-            packageName = packageName,
-            payout = payout,
-            totalMiles = totalMiles,
-            totalMinutes = effectiveMinutes,
-            hourlyRate = hourlyRate,
-            dollarsPerMile = dollarsPerMile,
-            meetsTarget = meetsTarget,
-            rawNodes = texts
-        )
-    }
 
     private fun showHourlyRateOverlay(evaluation: OfferEvaluation) {
         if (!Settings.canDrawOverlays(this)) {
@@ -656,6 +631,8 @@ class OptimizedOfferEngine : AccessibilityService() {
         }
         guidance?.clear()
         dismissOverlay()
+        mainHandler.removeCallbacks(restoredTick)
+        visualDebug?.close()
         InternalDiagnosticsLogger.logInteraction(this, "SERVICE", "OptimizedOfferEngine destroyed.")
         super.onDestroy()
     }
