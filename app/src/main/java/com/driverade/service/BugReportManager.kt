@@ -35,7 +35,7 @@ object BugReportManager {
             append("Driver Feedback:\n")
             append(userFeedback.ifBlank { "(No custom note entered)" })
             append("\n\n--- Inline Diagnostics Preview ---\n")
-            append(runCatching { diagFile.readText() }.getOrDefault("Unable to read log file."))
+            append(runCatching { diagFile.readText().takeLast(12000) }.getOrDefault("Unable to read log file."))
         }
 
         return Intent(Intent.ACTION_SEND).apply {
