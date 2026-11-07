@@ -2,7 +2,7 @@ name: Android CI Build v3.63
 
 on:
   push:
-    branches: [ "main", "experiment/**", "feature/**", "test/**", "fix/**", "integration/**", "policy/**" ]
+    branches: [ "main" ]
   pull_request:
   workflow_dispatch:
 
