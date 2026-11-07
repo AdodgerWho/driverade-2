@@ -69,7 +69,13 @@ class MainActivity : AppCompatActivity() {
                     testCase,
                     intent.getStringExtra(OptimizedOfferEngine.EXTRA_TEST_RESULT_STATUS) ?: "UNKNOWN",
                     intent.getStringExtra(OptimizedOfferEngine.EXTRA_TEST_RESULT_PROVENANCE),
-                    result
+                    result,
+                    if (intent.hasExtra(OptimizedOfferEngine.EXTRA_TEST_PAYOUT))
+                        intent.getDoubleExtra(OptimizedOfferEngine.EXTRA_TEST_PAYOUT, Double.NaN) else null,
+                    if (intent.hasExtra(OptimizedOfferEngine.EXTRA_TEST_MINUTES))
+                        intent.getDoubleExtra(OptimizedOfferEngine.EXTRA_TEST_MINUTES, Double.NaN) else null,
+                    if (intent.hasExtra(OptimizedOfferEngine.EXTRA_TEST_MILES))
+                        intent.getDoubleExtra(OptimizedOfferEngine.EXTRA_TEST_MILES, Double.NaN) else null
                 ))
                 batchIndex += 1
                 batchHandler.post { runNextSyntheticCase() }
@@ -296,13 +302,15 @@ class MainActivity : AppCompatActivity() {
     }
 
 
-    private fun sendSyntheticTest(platform: String, nodes: String, requestId: String) {
+    private fun sendSyntheticTest(platform: String, nodes: String, requestId: String,
+                                  source: String = "TREE") {
         pendingComparisonRequestId = requestId
         sendBroadcast(Intent(OptimizedOfferEngine.ACTION_TEST_OFFER_CARD).apply {
             setPackage(packageName)
             putExtra(OptimizedOfferEngine.EXTRA_TEST_PLATFORM, platform)
             putExtra(OptimizedOfferEngine.EXTRA_TEST_NODES, nodes)
             putExtra(OptimizedOfferEngine.EXTRA_TEST_REQUEST_ID, requestId)
+            putExtra(OptimizedOfferEngine.EXTRA_TEST_SOURCE, source)
         })
     }
 
@@ -348,7 +356,7 @@ class MainActivity : AppCompatActivity() {
         }
         val test = cases[batchIndex]
         val id = UUID.randomUUID().toString()
-        sendSyntheticTest(test.platform, test.nodes, id)
+        sendSyntheticTest(test.platform, test.nodes, id, test.source)
         val timeout = Runnable {
             if (activeBatch !== cases || pendingComparisonRequestId != id) return@Runnable
             pendingComparisonRequestId = null
@@ -433,7 +441,9 @@ class MainActivity : AppCompatActivity() {
                     } else if (activeBatch != null || pendingComparisonRequestId != null) {
                         Toast.makeText(this, "A parser test is already running", Toast.LENGTH_SHORT).show()
                     } else {
-                        sendSyntheticTest(platform, raw, UUID.randomUUID().toString())
+                        sendSyntheticTest(platform, raw, UUID.randomUUID().toString(),
+                            if (selectedCase < cases.size && raw == cases[selectedCase].nodes)
+                                cases[selectedCase].source else "TREE")
                         Toast.makeText(this, "Comparing parsers; results saved to diagnostics", Toast.LENGTH_LONG).show()
                     }
                 }
