@@ -91,6 +91,10 @@ object FeatureDiagnostics {
             if (validScreenshots > 0) "PASS" else if (visualEnabled) "FAIL" else "BLOCKED",
             "optIn=$visualEnabled savedPng=${screenshotFiles.size} verifiedPng=$validScreenshots; " +
                 "PASS proves readable image files exist, not that the current screen was captured")
+        checks += Check("Screenshot retention capacity",
+            if (screenshotFiles.size <= VisualDebugCapture.MAX_FILES) "PASS" else "FAIL",
+            "limit=${VisualDebugCapture.MAX_FILES} saved=${screenshotFiles.size} verified=$validScreenshots; " +
+                "rolling retention can discard older screenshots; export promptly after an Uber offer")
         checks += Check("Screenshot ZIP export verification", "BLOCKED",
             "Run Export ZIP and require VISUAL_DEBUG_EXPORT_VERIFIED plus screenshot entries in the downloaded archive")
         checks += check("Android Auto receiver registration") {
