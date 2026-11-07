@@ -53,6 +53,17 @@ jobs:
         run: |
           cp app/build/outputs/apk/debug/*.apk app/build/outputs/apk/debug/Driverade.apk
 
+      - name: Verify package and signing identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/Driverade.apk
+          sha256sum "$APK"
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n 1)
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
+          "$AAPT" dump badging "$APK" | grep "^package:"
+          "$APKSIGNER" verify --print-certs "$APK"
+
       - name: Upload Driverade APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
