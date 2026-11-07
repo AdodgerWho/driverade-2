@@ -1,8 +1,12 @@
 package com.driverade.ui
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -30,11 +34,30 @@ import com.google.android.material.bottomsheet.BottomSheetDialog
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.util.Locale
+import java.util.UUID
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: FragmentDashboardBinding
     private lateinit var prefs: DriverPreferences
+
+    private var comparisonResultReceiverRegistered = false
+    private var pendingComparisonRequestId: String? = null
+    private val comparisonResultReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != OptimizedOfferEngine.ACTION_TEST_OFFER_RESULT) return
+            val id = intent.getStringExtra(OptimizedOfferEngine.EXTRA_TEST_REQUEST_ID)
+            if (id == null || id != pendingComparisonRequestId) return
+            pendingComparisonRequestId = null
+            val result = intent.getStringExtra(OptimizedOfferEngine.EXTRA_TEST_RESULT_TEXT)
+                ?: "No comparison details were returned."
+            AlertDialog.Builder(this@MainActivity)
+                .setTitle("Parser comparison (synthetic)")
+                .setMessage(result)
+                .setPositiveButton("Close", null)
+                .show()
+        }
+    }
 
     private val shiftHandler = Handler(Looper.getMainLooper())
     private val shiftUpdateRunnable = object : Runnable {
@@ -66,6 +89,16 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (!comparisonResultReceiverRegistered) {
+            val filter = IntentFilter(OptimizedOfferEngine.ACTION_TEST_OFFER_RESULT)
+            if (Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(comparisonResultReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("DEPRECATION")
+                registerReceiver(comparisonResultReceiver, filter)
+            }
+            comparisonResultReceiverRegistered = true
+        }
         updatePermissionStatusPills()
         updateDashboardShiftAndStatus()
         refreshTodayStats()
@@ -73,6 +106,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        if (comparisonResultReceiverRegistered) {
+            unregisterReceiver(comparisonResultReceiver)
+            comparisonResultReceiverRegistered = false
+        }
+        pendingComparisonRequestId = null
         super.onPause()
         shiftHandler.removeCallbacks(shiftUpdateRunnable)
     }
@@ -237,19 +275,42 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Enable Driverade Accessibility to run parser tests", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
-            val platforms = arrayOf("UBER", "LYFT", "UBER_EATS", "DOORDASH")
+            // The delivery integrations are not validated yet; keep this UI rideshare-only.
+            val platforms = arrayOf("UBER", "LYFT", "HICH")
             val cases = arrayOf(
-                "Actionable offer" to "Trip request\\nAccept\\n$18.50\\n25 min\\n5.2 mi",
-                "Earnings history (must reject)" to "Your earnings\\nTrip\\nAccept\\n$101.83\\n20 min\\n4 mi",
-                "Map pill (must reject)" to "Trip in progress\\n$12.00\\n15 min\\n2.5 mi",
-                "Missing distance (must reject)" to "Trip request\\nAccept\\n$18.50\\n25 min",
+                "Uber actionable ride" to "Trip request\nAccept\n$18.50\n25 min\n5.2 mi",
+                "Uber reservation" to "Trip request\nAccept • $24.50\n12 min • 3.2 mi\n18 min • 6.4 mi",
+                "Lyft estimated rate" to "Ride request\nAccept\n$18.50\n$37/hr est rate for this ride\n5 min • 1.0 mi\n25 min • 8.0 mi",
+                "HICH basic offer" to "Ride request\nAccept\n$16.00\n24 min\n6.0 mi",
+                "Earnings history (reject)" to "Your earnings\nTrip\nAccept\n$101.83\n20 min\n4 mi",
+                "Map pill (reject)" to "Trip in progress\n$12.00\n15 min\n2.5 mi",
+                "Missing distance (reject)" to "Trip request\nAccept\n$18.50\n25 min",
                 "Custom card text" to ""
             )
             var platform = platforms[0]
-            var sample = cases[0].second
+            var selectedCase = 0
             val container = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(36, 12, 36, 0)
+            }
+            val input = EditText(this).apply {
+                minLines = 5
+                maxLines = 12
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                setText(cases[selectedCase].second)
+                hint = "One captured text node per line"
+            }
+            val caseButton = android.widget.Button(this).apply {
+                text = "Scenario: " + cases[selectedCase].first
+                setOnClickListener {
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Test card scenario")
+                        .setItems(cases.map { it.first }.toTypedArray()) { _, index ->
+                            selectedCase = index
+                            input.setText(cases[index].second)
+                            text = "Scenario: " + cases[index].first
+                        }.show()
+                }
             }
             val platformButton = android.widget.Button(this).apply {
                 text = "Platform: $platform"
@@ -259,48 +320,40 @@ class MainActivity : AppCompatActivity() {
                         .setItems(platforms) { _, index ->
                             platform = platforms[index]
                             text = "Platform: $platform"
-                        }.show()
-                }
-            }
-            val input = EditText(this).apply {
-                minLines = 5
-                maxLines = 12
-                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                setText(sample)
-                hint = "One captured text node per line"
-            }
-            val caseButton = android.widget.Button(this).apply {
-                text = "Scenario: ${cases[0].first}"
-                setOnClickListener {
-                    AlertDialog.Builder(this@MainActivity)
-                        .setTitle("Test card scenario")
-                        .setItems(cases.map { it.first }.toTypedArray()) { _, index ->
-                            sample = cases[index].second
-                            input.setText(sample)
-                            text = "Scenario: ${cases[index].first}"
+                            selectedCase = when (platform) {
+                                "LYFT" -> 2
+                                "HICH" -> 3
+                                else -> 0
+                            }
+                            caseButton.text = "Scenario: " + cases[selectedCase].first
+                            input.setText(cases[selectedCase].second)
                         }.show()
                 }
             }
             container.addView(TextView(this).apply {
-                text = "SYNTHETIC ONLY — uses the real gate and parser; never counts as a live offer."
+                text = "SYNTHETIC ONLY: active parser and legacy candidate run side by side. " +
+                    "Results appear here and in diagnostics; never count as live offers."
             })
             container.addView(platformButton)
             container.addView(caseButton)
             container.addView(input)
             AlertDialog.Builder(this)
-                .setTitle("Inject test offer card")
+                .setTitle("Inject and compare offer card")
                 .setView(container)
-                .setPositiveButton("Run parser") { _, _ ->
+                .setPositiveButton("Run comparison") { _, _ ->
                     val raw = input.text.toString()
                     if (raw.isBlank() || raw.length > 6000) {
                         Toast.makeText(this, "Enter 1–6000 characters", Toast.LENGTH_LONG).show()
                     } else {
+                        val requestId = UUID.randomUUID().toString()
+                        pendingComparisonRequestId = requestId
                         sendBroadcast(Intent(OptimizedOfferEngine.ACTION_TEST_OFFER_CARD).apply {
                             setPackage(packageName)
                             putExtra(OptimizedOfferEngine.EXTRA_TEST_PLATFORM, platform)
                             putExtra(OptimizedOfferEngine.EXTRA_TEST_NODES, raw)
+                            putExtra(OptimizedOfferEngine.EXTRA_TEST_REQUEST_ID, requestId)
                         })
-                        Toast.makeText(this, "Synthetic result recorded in diagnostics", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this, "Comparing parsers; results saved to diagnostics", Toast.LENGTH_LONG).show()
                     }
                 }
                 .setNegativeButton("Cancel", null)
