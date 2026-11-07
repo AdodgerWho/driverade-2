@@ -9,6 +9,9 @@ import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import java.io.File
 import java.io.FileOutputStream
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -27,7 +30,7 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
 
     fun isEnabled(): Boolean = preferences.getBoolean("enabled", false)
 
-    fun observe(event: AccessibilityEvent, pkg: String) {
+    fun observe(event: AccessibilityEvent, pkg: String, captureId: String) {
         if (!isEnabled()) return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             log("UNSUPPORTED", "api=${Build.VERSION.SDK_INT}")
@@ -42,12 +45,12 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
         val now = SystemClock.elapsedRealtime()
         if (now - lastCaptureElapsed < intervalMs || !busy.compareAndSet(false, true)) return
         lastCaptureElapsed = now
-        log("REQUESTED", "package=$pkg eventType=${event.eventType}")
+        log("REQUESTED", "capture=$captureId package=$pkg eventType=${event.eventType} eventWindow=${event.windowId}")
         try {
             service.takeScreenshot(Display.DEFAULT_DISPLAY, service.mainExecutor,
                 object : AccessibilityService.TakeScreenshotCallback {
                     override fun onFailure(errorCode: Int) {
-                        log("CAPTURE_FAILED", "package=$pkg code=$errorCode")
+                        log("CAPTURE_FAILED", "capture=$captureId package=$pkg code=$errorCode")
                         busy.set(false)
                     }
                     override fun onSuccess(result: AccessibilityService.ScreenshotResult) {
@@ -62,10 +65,13 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
                                 finally { hardware.recycle() }
                             } finally { buffer.close() }
                             val image = bitmap ?: error("Bitmap copy returned null")
-                            log("CAPTURE_SUCCESS", "width=${image.width} height=${image.height}")
-                            saveAndVerify(image, pkg)
+                            log("CAPTURE_SUCCESS", "capture=$captureId width=${image.width} height=${image.height} source=DISPLAY")
+                            saveAndVerify(image, pkg, captureId)
+                            if (pkg == "com.ubercab.driver") {
+                                inspectUberImage(image, captureId)
+                            }
                         } catch (error: Exception) {
-                            log("SAVE_FAILED", "reason=${error.javaClass.simpleName}")
+                            log("SAVE_FAILED", "capture=$captureId reason=${error.javaClass.simpleName}")
                         } finally {
                             bitmap?.recycle()
                             busy.set(false)
@@ -78,7 +84,40 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
         }
     }
 
-    private fun saveAndVerify(bitmap: Bitmap, pkg: String) {
+    /**
+     * Optional local-only OCR for diagnostic screenshots. This is a display capture,
+     * NOT a verified Uber window crop. No OCR strings are persisted or uploaded.
+     * The OCR candidate is never promoted to OfferEvaluation or alert dispatch.
+     */
+    private fun inspectUberImage(bitmap: Bitmap, captureId: String) {
+        val copy = try { bitmap.copy(Bitmap.Config.ARGB_8888, false) } catch (_: Exception) { null }
+        if (copy == null) {
+            log("OCR_FAILED", "capture=$captureId reason=BITMAP_COPY_FAILED")
+            return
+        }
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        try {
+            recognizer.process(InputImage.fromBitmap(copy, 0))
+                .addOnSuccessListener { result ->
+                    val summary = UberScreenOcrDiagnostics.inspect(result.text)
+                    InternalDiagnosticsLogger.logInteraction(service, "UBER_OCR_DIAGNOSTIC",
+                        "capture=$captureId " + summary.diagnostic())
+                }
+                .addOnFailureListener { error ->
+                    log("OCR_FAILED", "capture=$captureId reason=${error.javaClass.simpleName}")
+                }
+                .addOnCompleteListener {
+                    copy.recycle()
+                    recognizer.close()
+                }
+        } catch (error: Exception) {
+            copy.recycle()
+            recognizer.close()
+            log("OCR_FAILED", "capture=$captureId reason=${error.javaClass.simpleName}")
+        }
+    }
+
+    private fun saveAndVerify(bitmap: Bitmap, pkg: String, captureId: String) {
         check(directory.isDirectory || directory.mkdirs()) { "Cannot create image directory" }
         val safePkg = pkg.replace(Regex("[^a-zA-Z0-9._-]"), "_")
         val name = "${System.currentTimeMillis()}_${++serial}_${safePkg}.png"
@@ -97,7 +136,7 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
                     byteArrayOf(137.toByte(), 80, 78, 71, 13, 10, 26, 10))
             }
             check(valid) { "Invalid PNG signature" }
-            log("FILE_VERIFIED", "file=${output.name} bytes=${output.length()}")
+            log("FILE_VERIFIED", "capture=$captureId file=${output.name} bytes=${output.length()}")
             val retained = directory.listFiles()?.filter { it.isFile && it.extension.equals("png", true) }
                 ?.sortedWith(compareByDescending<File> { it.lastModified() }.thenByDescending { it.name }).orEmpty()
             val excess = retained.drop(maxFiles)

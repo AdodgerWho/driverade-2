@@ -1,0 +1,46 @@
+package com.driverade.service
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class UberScreenOcrDiagnosticsTest {
+    @Test fun exclusiveCardReportsBoundedUnverifiedCandidates() {
+        val summary = UberScreenOcrDiagnostics.inspect(
+            "UberX Exclusive\n\$5.53\n3 min 0.7 mi\n7 min 2.1 mi\nAccept"
+        )
+        assertTrue(summary.likelyOfferCard)
+        assertTrue(summary.possibleExclusive)
+        assertFalse(summary.possibleMatch)
+        assertEquals(listOf(5.53), summary.amounts)
+        assertEquals(listOf(3.0, 7.0), summary.legMinutes)
+        assertEquals(listOf(0.7, 2.1), summary.legMiles)
+        assertTrue(summary.diagnostic().contains("status=UNVERIFIED"))
+    }
+
+    @Test fun matchCardRecognizedButNotPromotedToOffer() {
+        val summary = UberScreenOcrDiagnostics.inspect(
+            "UberX Match\n\$6.74\n6 min 2.4 mi\n7 min 2.3 mi"
+        )
+        assertTrue(summary.likelyOfferCard)
+        assertTrue(summary.possibleMatch)
+        assertEquals(listOf(6.74), summary.amounts)
+    }
+
+    @Test fun unrelatedForegroundScreenDoesNotLogRawAmounts() {
+        val summary = UberScreenOcrDiagnostics.inspect(
+            "Messages\n\$73.52\n2 min 1 mi\nPrivate conversation"
+        )
+        assertFalse(summary.likelyOfferCard)
+        assertTrue(summary.amounts.isEmpty())
+        assertTrue(summary.diagnostic().contains("rawText=OMITTED"))
+        assertFalse(summary.diagnostic().contains("73.52"))
+    }
+
+    @Test fun noValuesMeansNoOfferClassification() {
+        val summary = UberScreenOcrDiagnostics.inspect("Uber Driver\nYou're online")
+        assertFalse(summary.likelyOfferCard)
+        assertEquals(emptyList<Double>(), summary.amounts)
+    }
+}
