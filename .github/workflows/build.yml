@@ -2,9 +2,8 @@ name: Android CI Build v3.63
 
 on:
   push:
-    branches: [ "main", "experiment/legacy-parser-adapters-pr27", "experiment/uber-field-provenance-pr30-20261107", "experiment/synthetic-batch-injector-pr31-20261107" ]
+    branches: [ "main" ]
   pull_request:
-    branches: [ "main", "experiment/legacy-parser-adapters-pr27" ]
   workflow_dispatch:
 
 jobs:

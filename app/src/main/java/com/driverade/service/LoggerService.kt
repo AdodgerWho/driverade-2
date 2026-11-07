@@ -84,7 +84,7 @@ class LoggerService : Service() {
                 append("[$time] Platform=${offer.platform} (${offer.packageName}) | ")
                 append(String.format(Locale.US, "Payout=$%.2f | Rate=$%.2f/hr | ", offer.payout, offer.hourlyRate))
                 append(String.format(Locale.US, "Miles=%.1f | Minutes=%.0f | TargetMet=%b\n", offer.totalMiles, offer.totalMinutes, offer.meetsTarget))
-                append("  RawNodes: ${offer.rawNodes.joinToString(" :: ")}\n")
+                append("  RawNodes: [OMITTED — Developer Inspection is the explicit raw capture path]\n")
             }
         }
 

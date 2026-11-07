@@ -195,7 +195,9 @@ class OptimizedOfferEngine : AccessibilityService() {
             "com.ubercab.driver" to "UBER",
             "com.ubercab.eats" to "UBER_EATS",
             "me.lyft.driver" to "LYFT",
+            "com.lyft.android.driver" to "LYFT", // confirmed historical Driverlogger captures
             "com.hich.driver" to "HICH",
+            "us.mi.hich.driver" to "HICH", // confirmed historical Driverlogger captures
             "com.doordash.driverapp" to "DOORDASH",
             "com.grubhub.driver" to "GRUBHUB"
         )
@@ -250,6 +252,14 @@ class OptimizedOfferEngine : AccessibilityService() {
         InternalDiagnosticsLogger.logRoutine(this, "EVENT_INGEST", "package=$pkgName type=${event.eventType}")
 
         if (resolvePlatform(pkgName) != null) logWindowVisibility(event, pkgName)
+        if (pkgName == "com.ubercab.driver" && DeveloperInspection.isActive(this)) {
+            try {
+                DeveloperInspection.observe(this, event, windows.orEmpty(), rootInActiveWindow)
+            } catch (e: Exception) {
+                InternalDiagnosticsLogger.logInteraction(this, "DEV_INSPECTION_ERROR",
+                    "capture=$captureId reason=${e.javaClass.simpleName}")
+            }
+        }
 
         val platform = resolvePlatform(pkgName)
         if (platform == null) {

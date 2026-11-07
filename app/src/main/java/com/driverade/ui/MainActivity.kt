@@ -26,6 +26,7 @@ import com.driverade.databinding.FragmentDashboardBinding
 import com.driverade.service.BugReportManager
 import com.driverade.service.FeatureDiagnostics
 import com.driverade.service.DriveradeState
+import com.driverade.service.DeveloperInspection
 import com.driverade.service.LoggerService
 import com.driverade.service.InternalDiagnosticsLogger
 import com.driverade.service.OptimizedOfferEngine
@@ -107,6 +108,7 @@ class MainActivity : AppCompatActivity() {
         setupPlatformFilterBottomSheet()
         setupDiagnosticsAndBugReport()
         setupVisualDebugCapture()
+        setupDeveloperInspection()
         observeRealtimeOffers()
     }
 
@@ -125,6 +127,7 @@ class MainActivity : AppCompatActivity() {
         updatePermissionStatusPills()
         updateDashboardShiftAndStatus()
         refreshTodayStats()
+        updateDeveloperInspectionStatus()
         shiftHandler.post(shiftUpdateRunnable)
     }
 
@@ -544,6 +547,85 @@ class MainActivity : AppCompatActivity() {
                     debugPrefs.edit().putBoolean("enabled", false).apply()
                 }
             }
+        }
+    }
+
+    private fun updateDeveloperInspectionStatus() {
+        val enabled = DeveloperInspection.isActive(this)
+        binding.tvDevInspectionWarning?.text = if (enabled) {
+            "WARNING: DEVELOPER INSPECTION ACTIVE (${DeveloperInspection.remainingMinutes(this)} min left). " +
+                "Raw accessibility text and descriptions may contain unintended sensitive information, " +
+                "including rider names, addresses, and other visible app content. Private file on device."
+        } else {
+            "DEVELOPER INSPECTION: OFF. When enabled, captures raw Uber window hierarchies. " +
+                "May expose unintended sensitive information. Not for routine operation."
+        }
+        binding.btnDevInspectionToggle?.text =
+            if (enabled) "Stop Developer Inspection" else "Start Developer Inspection (30 min)"
+    }
+
+    private fun setupDeveloperInspection() {
+        updateDeveloperInspectionStatus()
+        binding.btnDevInspectionToggle?.setOnClickListener {
+            if (DeveloperInspection.isActive(this)) {
+                DeveloperInspection.stop(this)
+                updateDeveloperInspectionStatus()
+            } else {
+                AlertDialog.Builder(this)
+                    .setTitle("WARNING: Sensitive developer inspection")
+                    .setMessage(
+                        "This diagnostic tool records raw Uber accessibility view text, " +
+                        "descriptions, identifiers, hierarchy, screen bounds and window metadata. " +
+                        "It may expose unintended personal information such as rider names, " +
+                        "pickup addresses, notifications, or details visible inside Uber. " +
+                        "Only use on your own device while actively debugging.\\n\\n" +
+                        "The session ends automatically after 30 minutes, with a 2 MB trace limit. " +
+                        "Records remain in app-private storage until you delete them or begin a " +
+                        "new session. They are NOT included in normal log or screenshot exports. " +
+                        "Exporting makes an unencrypted copy in Downloads that other apps " +
+                        "or people with access to the device may be able to read. " +
+                        "No automatic uploads or parser changes occur."
+                    )
+                    .setPositiveButton("I understand — start") { _, _ ->
+                        DeveloperInspection.start(this)
+                        updateDeveloperInspectionStatus()
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+        }
+        binding.btnExportDevInspection?.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("EXPORT RAW PRIVATE INFORMATION?")
+                .setMessage(
+                    "This exports UNREDACTED Uber accessibility text, descriptions, " +
+                    "window hierarchies and bounds as a file in Downloads. " +
+                    "It may expose rider information or other unintended private content. " +
+                    "No automatic upload occurs; inspect and redact it before sharing."
+                )
+                .setPositiveButton("Export unredacted trace") { _, _ ->
+                    BugReportManager.exportDeveloperInspection(this)
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+        binding.btnClearDevInspection?.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("Delete private developer trace?")
+                .setMessage(
+                    "Stop the active inspection session and permanently delete its " +
+                    "app-private raw trace. Previously exported Downloads files are not deleted."
+                )
+                .setPositiveButton("Stop and delete") { _, _ ->
+                    DeveloperInspection.stop(this)
+                    val deleted = DeveloperInspection.clear(this)
+                    updateDeveloperInspectionStatus()
+                    Toast.makeText(this,
+                        if (deleted) "Developer trace deleted" else "Unable to delete developer trace",
+                        Toast.LENGTH_LONG).show()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
         }
     }
 

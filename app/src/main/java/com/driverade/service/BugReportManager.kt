@@ -143,6 +143,53 @@ object BugReportManager {
         }
     }
 
+    /**
+     * Developer-only raw hierarchy export. Deliberately separate from routine logs
+     * and screenshot exports. Calling this requires a second explicit UI warning.
+     */
+    fun exportDeveloperInspection(context: Context): Boolean {
+        val source = DeveloperInspection.file(context)
+        if (!source.isFile || source.length() == 0L) {
+            Toast.makeText(context, "No developer inspection trace to export", Toast.LENGTH_LONG).show()
+            return false
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            Toast.makeText(context, "Developer export requires Android 10+", Toast.LENGTH_LONG).show()
+            return false
+        }
+        var uri: Uri? = null
+        return try {
+            val resolver = context.contentResolver
+            val name = "driverade_PRIVATE_uber_inspection_${System.currentTimeMillis()}.jsonl"
+            uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                put(MediaStore.MediaColumns.MIME_TYPE, "application/x-ndjson")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }) ?: error("Unable to create private export")
+            val outUri = uri ?: error("No output URI")
+            resolver.openOutputStream(outUri)?.use { out ->
+                source.inputStream().use { it.copyTo(out) }
+            } ?: error("Unable to write export")
+            val bytes = resolver.openInputStream(outUri)?.use { it.use { input -> input.readBytes().size.toLong() } }
+                ?: error("Cannot verify export")
+            check(bytes == source.length()) { "Developer export length mismatch" }
+            resolver.update(outUri, ContentValues().apply {
+                put(MediaStore.MediaColumns.IS_PENDING, 0)
+            }, null, null)
+            InternalDiagnosticsLogger.logInteraction(context, "DEV_INSPECTION_EXPORT",
+                "bytes=$bytes rawText=EXPLICIT_USER_EXPORT location=DOWNLOADS")
+            Toast.makeText(context, "PRIVATE developer trace saved to Downloads. Review before sharing.", Toast.LENGTH_LONG).show()
+            true
+        } catch (e: Exception) {
+            uri?.let { context.contentResolver.delete(it, null, null) }
+            InternalDiagnosticsLogger.logInteraction(context, "DEV_INSPECTION_EXPORT_FAILED",
+                "reason=${e.javaClass.simpleName}")
+            Toast.makeText(context, "Developer export failed", Toast.LENGTH_LONG).show()
+            false
+        }
+    }
+
     fun exportLogsLocally(context: Context, prefs: DriverPreferences): Boolean {
         val sourceFile = File(context.filesDir, "driverade_diagnostics.txt")
         val fileName = "driverade_diagnostics_${System.currentTimeMillis()}.txt"

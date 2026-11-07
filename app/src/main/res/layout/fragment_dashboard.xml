@@ -481,6 +481,40 @@
                 android:textColor="#FFFFFF"
                 android:checked="false" />
 
+            <TextView
+                android:id="@+id/tvDevInspectionWarning"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:text="DEVELOPER INSPECTION: OFF. May expose unintended information from Uber windows, rider details, addresses, and visible screen content. Not for normal operation."
+                android:textColor="#FCA5A5"
+                android:textStyle="bold"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/btnDevInspectionToggle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Start Developer Inspection (30 min)"
+                android:textAllCaps="false" />
+
+            <Button
+                android:id="@+id/btnExportDevInspection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Export PRIVATE Developer Trace"
+                android:textAllCaps="false" />
+
+            <Button
+                android:id="@+id/btnClearDevInspection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Delete Private Developer Trace"
+                android:textAllCaps="false" />
+
             <Button
                 android:id="@+id/btnRunFeatureDiagnostics"
                 android:layout_width="match_parent"
