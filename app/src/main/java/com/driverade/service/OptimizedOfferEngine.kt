@@ -28,6 +28,7 @@ class OptimizedOfferEngine : AccessibilityService() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var lastOfferSignature: String = ""
     private var lastOfferTimestamp: Long = 0L
+    private var diagnosticSequence: Long = 0L
 
     companion object {
         private const val TAG = "OptimizedOfferEngine"
@@ -60,6 +61,7 @@ class OptimizedOfferEngine : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
         val pkgName = event.packageName?.toString() ?: "unknown.package"
+        val captureId = "${System.currentTimeMillis()}-${++diagnosticSequence}"
 
         InternalDiagnosticsLogger.logInteraction(this, "EVENT_INGEST", "Received accessibility event from package: $pkgName (Type: ${event.eventType})")
 
@@ -74,7 +76,7 @@ class OptimizedOfferEngine : AccessibilityService() {
             return
         }
 
-        InternalDiagnosticsLogger.logInteraction(this, "PLATFORM_MATCH", "Matched active platform: $platform")
+        InternalDiagnosticsLogger.logInteraction(this, "PLATFORM_MATCH", "capture=$captureId platform=$platform type=${event.eventType} eventTime=${event.eventTime} window=${event.windowId} class=${event.className}")
 
         val collectedNodes = LinkedHashSet<String>()
 
@@ -99,7 +101,7 @@ class OptimizedOfferEngine : AccessibilityService() {
             InternalDiagnosticsLogger.logInteraction(this, "WARN", "Multi-window inspection warning: ${e.message}")
         }
 
-        InternalDiagnosticsLogger.logInteraction(this, "NODE_SCRAPE", "Collected ${collectedNodes.size} unique nodes from window hierarchy.")
+        InternalDiagnosticsLogger.logInteraction(this, "NODE_SCRAPE", "capture=$captureId count=${collectedNodes.size} nodes=${collectedNodes.take(100).map { it.take(180) }} truncated=${collectedNodes.size > 100}")
 
         if (collectedNodes.isEmpty()) {
             InternalDiagnosticsLogger.logInteraction(this, "PARSE_ABORT", "No text nodes found to evaluate.")
@@ -110,27 +112,31 @@ class OptimizedOfferEngine : AccessibilityService() {
         val joinedTextLower = rawList.joinToString(" ").lowercase(Locale.US)
         val hasValidKeyword = OFFER_KEYWORDS.any { joinedTextLower.contains(it) }
 
+        InternalDiagnosticsLogger.logInteraction(this, "OFFER_GATE", "capture=$captureId matched=${OFFER_KEYWORDS.filter { joinedTextLower.contains(it) }}")
         if (!hasValidKeyword) {
             InternalDiagnosticsLogger.logInteraction(this, "KEYWORD_DROP", "Ignored: Missing mandatory offer validation keywords.")
             return
         }
 
+        InternalDiagnosticsLogger.logInteraction(this, "PARSE_INPUT", "capture=$captureId payouts=${rawList.flatMap { PAYOUT_REGEX.findAll(it).map { m -> m.value }.toList() }.take(30)} minutes=${MINUTES_REGEX.findAll(joinedTextLower).map { it.value }.take(30).toList()} miles=${MILES_REGEX.findAll(joinedTextLower).map { it.value }.take(30).toList()}")
         val evaluation = parseOfferNodes(platform, pkgName, rawList)
         
         if (evaluation == null) {
-            InternalDiagnosticsLogger.logInteraction(this, "PARSE_FAIL", "Nodes scraped but regex rejected. Sample nodes: ${rawList.take(5)}")
+            InternalDiagnosticsLogger.logInteraction(this, "PARSE_FAIL", "capture=$captureId nodes=${rawList.size} no valid payout")
             return
         }
 
+        InternalDiagnosticsLogger.logInteraction(this, "PARSE_RESULT", "capture=$captureId platform=${evaluation.platform} payout=${evaluation.payout} minutes=${evaluation.totalMinutes} miles=${evaluation.totalMiles} hourly=${evaluation.hourlyRate} target=${evaluation.meetsTarget}")
         val signature = "${evaluation.platform}_${evaluation.payout}_${evaluation.totalMinutes}_${evaluation.totalMiles}"
         val now = System.currentTimeMillis()
         if (signature == lastOfferSignature && (now - lastOfferTimestamp) < 4000L) {
-            InternalDiagnosticsLogger.logInteraction(this, "DEBOUNCE", "Duplicate offer suppressed within 4s window.")
+            InternalDiagnosticsLogger.logInteraction(this, "DEBOUNCE", "capture=$captureId signature=$signature elapsed=${now-lastOfferTimestamp} suppressed=true")
             return
         }
         lastOfferSignature = signature
         lastOfferTimestamp = now
 
+        InternalDiagnosticsLogger.logInteraction(this, "ALERT_DISPATCH", "capture=$captureId signature=$signature")
         InternalDiagnosticsLogger.logInteraction(this, "SUCCESS", "Offer evaluated: Payout=$${evaluation.payout}, Hourly=$${evaluation.hourlyRate}/hr, TargetMet=${evaluation.meetsTarget}")
 
         DriveradeState.recordOffer(evaluation)

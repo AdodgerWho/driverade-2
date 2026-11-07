@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.IBinder
 import android.util.Log
 import androidx.core.content.FileProvider
+import com.driverade.BuildConfig
 import com.driverade.data.DriverPreferences
 import java.io.File
 import java.io.FileWriter
@@ -41,9 +42,9 @@ class LoggerService : Service() {
             val file = getDiagnosticsFile(context)
             val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
             try {
-                FileWriter(file, false).use { writer ->
+                FileWriter(file, true).use { writer ->
                     writer.append("Driverade Diagnostics - $timestamp\n")
-                    writer.append("Version: 3.62\n")
+                    writer.append("Version: ${BuildConfig.VERSION_NAME}\n")
                     writer.append("Target Rate: $${prefs.targetHourlyRate}\n")
                     writer.append("Min Payout: $${prefs.minPayout}\n")
                     writer.append("Today Earnings: $${prefs.todayEarnings}\n")
@@ -108,7 +109,7 @@ class LoggerService : Service() {
             return Intent(Intent.ACTION_SEND).apply {
                 type = "message/rfc822"
                 putExtra(Intent.EXTRA_EMAIL, arrayOf(SUPPORT_EMAIL))
-                putExtra(Intent.EXTRA_SUBJECT, "Driverade v3.62 Bug Report & Diagnostics")
+                putExtra(Intent.EXTRA_SUBJECT, "Driverade v${BuildConfig.VERSION_NAME} Bug Report & Diagnostics")
                 putExtra(Intent.EXTRA_TEXT, body)
                 putExtra(Intent.EXTRA_STREAM, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)

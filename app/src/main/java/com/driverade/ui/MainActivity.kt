@@ -15,6 +15,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.driverade.BuildConfig
 import com.driverade.data.DriverPreferences
 import com.driverade.databinding.FragmentDashboardBinding
 import com.driverade.service.BugReportManager
@@ -69,7 +70,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupHeaderAndStatusPills() {
-        binding.tvVersionBadge?.text = "Driverade v3.63"
+        binding.tvVersionBadge?.text = "Driverade v${BuildConfig.VERSION_NAME}"
         updatePermissionStatusPills()
 
         binding.pillAccessibilityStatus?.setOnClickListener {
@@ -230,7 +231,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.btnExportLogsLocally?.setOnClickListener {
-            BugReportManager.exportLogsLocally(this, prefs)
+            AlertDialog.Builder(this)
+                .setTitle("Export diagnostics")
+                .setItems(arrayOf("Current work session", "All retained sessions")) { _, choice ->
+                    BugReportManager.exportLogsLocally(this, prefs, allSessions = choice == 1)
+                }
+                .show()
         }
     }
 
