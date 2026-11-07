@@ -39,8 +39,10 @@ class OptimizedOfferEngine : AccessibilityService() {
                 if (platform !in setOf("UBER", "UBER_EATS", "LYFT", "DOORDASH", "GRUBHUB", "HICH") ||
                     raw.isBlank() || raw.length > 6000) {
                     InternalDiagnosticsLogger.logInteraction(this@OptimizedOfferEngine, "SYNTHETIC_TEST_INVALID", "Invalid platform or card length")
+                    sendSyntheticResult(intent.getStringExtra(EXTRA_TEST_REQUEST_ID).orEmpty(), "Invalid test platform or card length.")
                     return
                 }
+                val requestId = intent.getStringExtra(EXTRA_TEST_REQUEST_ID).orEmpty()
                 val nodes = raw.lines().map { it.trim() }.filter { it.isNotEmpty() }.take(60)
                 val reason = OfferScreenClassifier.rejectionReason(nodes)
                 val accepted = OfferScreenClassifier.isActiveOffer(nodes)
@@ -50,11 +52,18 @@ class OptimizedOfferEngine : AccessibilityService() {
                     evaluation == null -> "PARSE_FAIL"
                     else -> "PASS"
                 }
+                val report = OfferParserComparison.compare(platform, nodes, accepted, evaluation?.let {
+                    OfferParserComparison.ActiveSnapshot(it.payout, it.totalMinutes, it.totalMiles, it.hourlyRate)
+                })
                 InternalDiagnosticsLogger.logInteraction(this@OptimizedOfferEngine, "SYNTHETIC_TEST_RESULT",
-                    "source=SYNTHETIC platform=$platform status=$status gate=$reason nodes=${nodes.size} " +
-                    "payout=${evaluation?.payout ?: "NA"} minutes=${evaluation?.totalMinutes ?: "NA"} " +
-                    "miles=${evaluation?.totalMiles ?: "NA"} hourly=${evaluation?.hourlyRate ?: "NA"} " +
-                    "target=${evaluation?.meetsTarget ?: "NA"}; no live counters, overlays, telemetry or alerts")
+                    "source=SYNTHETIC platform=$platform status=$status gate=$reason nodes=" + nodes.size +
+                    " payout=" + (evaluation?.payout ?: "NA") + " minutes=" + (evaluation?.totalMinutes ?: "NA") +
+                    " miles=" + (evaluation?.totalMiles ?: "NA") + " hourly=" + (evaluation?.hourlyRate ?: "NA") +
+                    "; no live counters, overlays, telemetry or alerts")
+                InternalDiagnosticsLogger.logInteraction(this@OptimizedOfferEngine, "PARSER_COMPARISON",
+                    report.diagnostic("SYNTHETIC", requestId, reason))
+                sendSyntheticResult(requestId,
+                    "Active path: $status | gate: $reason\n\n" + report.display())
                 return
             }
             if (intent?.action != ACTION_TEST_ALERT_PILL) return
@@ -122,6 +131,8 @@ class OptimizedOfferEngine : AccessibilityService() {
         }
     }
 
+    private var lastShadowSignature: String = ""
+    private var lastShadowTime = 0L
     private var lastOfferSignature: String = ""
     private var lastOfferTimestamp: Long = 0L
 
@@ -130,6 +141,9 @@ class OptimizedOfferEngine : AccessibilityService() {
         const val ACTION_TEST_OFFER_CARD = "com.driverade.action.TEST_OFFER_CARD"
         const val EXTRA_TEST_PLATFORM = "test_platform"
         const val EXTRA_TEST_NODES = "test_nodes"
+        const val ACTION_TEST_OFFER_RESULT = "com.driverade.action.TEST_OFFER_RESULT"
+        const val EXTRA_TEST_REQUEST_ID = "test_request_id"
+        const val EXTRA_TEST_RESULT_TEXT = "test_result_text"
         private const val TAG = "OptimizedOfferEngine"
         private const val OVERLAY_DURATION_MS = 9000L
 
@@ -278,7 +292,27 @@ class OptimizedOfferEngine : AccessibilityService() {
 
         InternalDiagnosticsLogger.logInteraction(this, "PARSE_INPUT", "capture=$captureId payoutCandidates=${rawList.flatMap { PAYOUT_REGEX.findAll(it).map { m -> m.value }.toList() }.take(15)} durationCandidates=${MINUTES_REGEX.findAll(joinedTextLower).map { it.value }.take(15).toList()} distanceCandidates=${MILES_REGEX.findAll(joinedTextLower).map { it.value }.take(15).toList()}")
         val evaluation = parseOfferNodes(platform, pkgName, rawList)
-        
+        // Shadow comparison reads the same gated live nodes. Its output is diagnostic only.
+        // Do not alter the existing parse result, alerts, dedupe or offer statistics.
+        if (platform == "UBER" || platform == "LYFT") {
+            val signature = platform + "|" + rawList.joinToString("\u001f").hashCode()
+            val nowShadow = android.os.SystemClock.elapsedRealtime()
+            if (signature != lastShadowSignature || nowShadow - lastShadowTime >= 60_000L) {
+                lastShadowSignature = signature
+                lastShadowTime = nowShadow
+                try {
+                    val report = OfferParserComparison.compare(platform, rawList, true, evaluation?.let {
+                        OfferParserComparison.ActiveSnapshot(it.payout, it.totalMinutes, it.totalMiles, it.hourlyRate)
+                    })
+                    InternalDiagnosticsLogger.logInteraction(this, "PARSER_COMPARISON",
+                        report.diagnostic("LIVE_SHADOW", captureId, "none"))
+                } catch (e: Exception) {
+                    InternalDiagnosticsLogger.logInteraction(this, "PARSER_COMPARISON_ERROR",
+                        "capture=$captureId platform=$platform error=" + e.javaClass.simpleName)
+                }
+            }
+        }
+
         if (evaluation == null) {
             InternalDiagnosticsLogger.logInteraction(this, "PARSE_FAIL", "Offer fields invalid or missing; text content withheld for privacy")
             return
@@ -308,6 +342,14 @@ class OptimizedOfferEngine : AccessibilityService() {
         } else {
             InternalDiagnosticsLogger.logInteraction(this, "ALERT_DISABLED", "Live offer evaluated but alerter is disabled")
         }
+    }
+
+    private fun sendSyntheticResult(requestId: String, text: String) {
+        sendBroadcast(Intent(ACTION_TEST_OFFER_RESULT).apply {
+            setPackage(packageName)
+            putExtra(EXTRA_TEST_REQUEST_ID, requestId)
+            putExtra(EXTRA_TEST_RESULT_TEXT, text.take(1800))
+        })
     }
 
     private fun resolvePlatform(packageName: String): String? {

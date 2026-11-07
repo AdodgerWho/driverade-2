@@ -54,6 +54,31 @@ object FeatureDiagnostics {
             OfferScreenClassifier.isActiveOffer(listOf("Trip request", "Accept", "$18.50", "25 min", "5.2 mi")) to
                 "Synthetic offer classification only; not a live platform test"
         }
+        checks += check("Lyft shadow comparison fixture") {
+            val nodes = listOf("Ride request", "Accept", "$18.50",
+                "$37/hr est rate for this ride", "5 min • 1.0 mi", "25 min • 8.0 mi")
+            val report = OfferParserComparison.compare("LYFT", nodes, true,
+                OfferParserComparison.ActiveSnapshot(18.50, 30.0, 9.0, 37.0))
+            (report.status == "MATCH" && report.reportedEstimatedRate == 37.0) to
+                "Both comparators agree on complete Lyft fixture; no live input tested"
+        }
+        checks += check("Uber reservation candidate stays partial") {
+            val nodes = listOf("Trip request", "Accept • $24.50",
+                "12 min • 3.2 mi", "18 min • 6.4 mi")
+            val report = OfferParserComparison.compare("UBER", nodes, true,
+                OfferParserComparison.ActiveSnapshot(24.50, 30.0, 9.6, 49.0))
+            (report.status == "PARTIAL" && report.fields.first().state == "MATCH") to
+                "Reservation candidate has payout but no verified pickup total"
+        }
+        checks += check("Shadow parser cannot override offer gate") {
+            val nodes = listOf("Your earnings", "Trip", "Accept", "$101.83", "20 min", "4 mi")
+            val report = OfferParserComparison.compare("UBER", nodes,
+                OfferScreenClassifier.isActiveOffer(nodes), null)
+            (report.status == "GATE_REJECT") to
+                "Historical earnings remain rejected even when values are present"
+        }
+        checks += Check("Synthetic result delivery to dashboard", "BLOCKED",
+            "Run the injector; require a comparison dialog and PARSER_COMPARISON export record")
         checks += check("Tip ledger read") {
             val count = TipLedger.countToday(context)
             val total = TipLedger.totalToday(context)
