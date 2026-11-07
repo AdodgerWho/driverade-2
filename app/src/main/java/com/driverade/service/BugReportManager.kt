@@ -33,7 +33,7 @@ object BugReportManager {
             append("Driver Feedback:\n")
             append(userFeedback.ifBlank { "(No custom note entered)" })
             append("\n\n--- Inline Diagnostics Preview ---\n")
-            append(runCatching { diagFile.readText() }.getOrDefault("Unable to read log file."))
+            append(runCatching { diagFile.inputStream().bufferedReader().use { it.readText().takeLast(12000) } }.getOrDefault("Unable to read log file."))
         }
 
         return Intent(Intent.ACTION_SEND).apply {
@@ -66,9 +66,8 @@ object BugReportManager {
 
                 val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
                 if (uri != null) {
-                    resolver.openOutputStream(uri)?.use { outputStream ->
-                        outputStream.write(exportText.toByteArray(Charsets.UTF_8))
-                    }
+                    val outputStream = resolver.openOutputStream(uri) ?: return false
+                    outputStream.use { it.write(exportText.toByteArray(Charsets.UTF_8)) }
                     Toast.makeText(context, "Exported to Downloads/$fileName", Toast.LENGTH_LONG).show()
                     true
                 } else {
