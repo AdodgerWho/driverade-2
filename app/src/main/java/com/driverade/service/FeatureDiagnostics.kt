@@ -77,6 +77,33 @@ object FeatureDiagnostics {
             (report.status == "GATE_REJECT") to
                 "Historical earnings remain rejected even when values are present"
         }
+        checks += check("Restored Uber Exclusive OCR fixture") {
+            val result = RestoredOfferParser.fromUberOcr(
+                "UberX Exclusive\n\$5.53\n3 min • 0.7 mi\n7 mins • 2.1 mi\nAccept")
+            val offer = result.offer
+            (offer != null && offer.kind == "live" &&
+                kotlin.math.abs(offer.payout - 5.53) < 0.01 &&
+                kotlin.math.abs(offer.hourlyRate - 33.18) < 0.01) to
+                "Historical visual $5.53 Exclusive expected 10 min; synthetic OCR text only"
+        }
+        checks += check("Restored Uber Match OCR fixture") {
+            val result = RestoredOfferParser.fromUberOcr(
+                "UberX\n\$6.74\n6 min • 2.4 mi\n7 mins • 2.3 mi\nMatch")
+            val offer = result.offer
+            (offer != null && offer.kind == "match" &&
+                kotlin.math.abs(offer.payout - 6.74) < 0.01 &&
+                kotlin.math.abs(offer.totalMiles - 4.7) < 0.01) to
+                "Historical visual $6.74 Match expected 13 min; synthetic OCR text only"
+        }
+        checks += check("Restored Uber ambiguous payout rejection") {
+            val result = RestoredOfferParser.fromTree("UBER", listOf(
+                "Trip request", "Accept", "\$12.04", "\$13.08",
+                "6 min • 2 mi", "7 min • 3 mi"))
+            (result.offer == null) to "No arbitrary largest-dollar selection"
+        }
+        checks += Check("Live restored OCR and timed accessibility inspection", "BLOCKED",
+            "Requires actual background Uber offer; verify RESTORED_TREE_PARSE, " +
+                "RESTORED_OCR_PARSE and PARSE_RESULT; synthetic tests do not prove capture")
         checks += Check("Synthetic result delivery to dashboard", "BLOCKED",
             "Run the injector; require a comparison dialog and PARSER_COMPARISON export record")
         checks += check("Tip ledger read") {
