@@ -26,20 +26,20 @@ This policy applies to coding assistants and human changes in this repository.
 2. Categorize each PR as verified, partially verified, experimental, superseded, or blocked.
 3. Merge or cherry-pick only proven behavior into a clean integration candidate.
 4. Test the entire combined candidate, including regressions, alerts, screenshot export, diagnostics, and privacy controls.
-5. Promote a fully verified integration candidate to `main` after a clean combined build and the project's release approval; don't restart feature-by-feature verification merely because code moved branches.
+5. Before merging a fully verified integration candidate into `main`, save its tested APK to the Drive **Update builds** archive and verify that the uploaded artifact is accessible and matches the tested build. Then promote to `main` with the project's release approval; don't restart feature-by-feature verification merely because code moved branches.
 6. Close superseded PRs **only after** verifying their needed changes exist elsewhere, referencing the replacement PR or commit. Delete stale branches only after verifying there is no unique work or diagnostics.
 7. Keep a short PR ledger so the next developer knows what is verified, what is waiting, and why.
 
-## Versioned Google Drive archive
+## Pre-merge integration snapshot (Google Drive)
 
-- **Definition: an iteration is an integration merge that changes `main`.** Experimental branch commits, PR updates, synthetic test runs, CI builds, integration-candidate builds, and APKs that do not alter `main` are **not** iterations under this policy. Only a completed, verified merge into `main` triggers mandatory iteration archival.
-- Use the existing Google Drive **Update builds** folder as the canonical archive for each verified `main` integration-merge iteration: https://drive.google.com/drive/folders/1gsKOPoqRIqt5wqnT3G8RSI245wroq0-c . Keep an individual, clearly named folder per version/build/commit rather than overwriting an older APK.
-- For each `main` integration-merge iteration, copy the merged build's signed or debug APK artifact **when available**, plus `BUILD_INFO.md` (version, build/run ID, SHA, source branch, signing/update compatibility and timestamp), `CHANGELOG.md` (features/fixes and originating PRs), `TEST_CHECKLIST.md` (tests, outcomes, verification provenance, known failures and limitations), and pertinent **sanitized, explicitly approved** diagnostics or regression fixtures.
-- Mark each iteration `EXPERIMENTAL`, `CANDIDATE`, or `VERIFIED` in its documentation; never infer verification from successful compilation alone. When a feature is checked off in a later build, reference the prior originating PR and the later verified build in both records.
-- GitHub remains the canonical source-code and change-history repository; Drive holds reproducible build artifacts and supporting documents, not uncontrolled copies of the repository.
-- Keep the existing Drive **Driverade** folder as a curated home for reference screenshots and historical diagnostics: https://drive.google.com/drive/folders/1nOveqTivf5JBPPHoM9oTSqqSkAvcdgjh . Inventory and categorize apparent clutter before relocating it. Do not mass-delete or empty that folder without an explicit reviewed retention decision.
-- Do not automatically copy live screenshots, rider or location information, raw accessibility captures, or other personal data to Drive. Keep diagnostics local unless specifically selected for sharing, and redact or minimize identifying data before archival.
-- Archive only after the verified integration merge actually alters `main`. Release candidates and experimental builds may be tested separately but do not trigger iteration archives. Do not create empty placeholder iteration folders or claim files have been copied before the upload and readback succeed.
+- **Iteration means a verified integration merge that changes `main`.** Experimental builds and PR updates are not iterations.
+- GitHub is the canonical workspace and self-assembling development ledger (code, PR checklists, test evidence, change history, and release references). **Do not duplicate that ledger or entire source trees on Drive.**
+- **Before each merge into `main`**, save the exact *fully tested integration-candidate APK* to the existing **Update builds** folder: https://drive.google.com/drive/folders/1gsKOPoqRIqt5wqnT3G8RSI245wroq0-c . Organize snapshots by intended iteration/version and verified source commit; do not overwrite older snapshots.
+- Keep only essential build provenance alongside the APK: its source commit SHA, CI build/run identifier, version, and the integrating GitHub PR URL or ID. A short filename or single manifest is enough; link to the GitHub ledger for all feature and test documentation rather than copying it.
+- Confirm that the Drive upload succeeded and the saved APK is retrievable **before** altering `main`. The pre-merge archive is a recovery snapshot, not evidence that `main` has already been merged.
+- After merging, record the resulting `main` merge SHA against the archived snapshot in GitHub's existing ledger. If the merge creates materially different code than the tested candidate, verify and snapshot that changed build before promoting it as stable.
+- The existing **Driverade** Drive folder remains a curated home for historical screenshots and diagnostic references: https://drive.google.com/drive/folders/1nOveqTivf5JBPPHoM9oTSqqSkAvcdgjh . Do not empty it or bulk-delete files without a reviewed retention decision.
+- Never automatically upload live screenshots, raw accessibility events, rider data, or precise location to Drive. Sensitive diagnostic uploads remain explicitly selected and minimized.
 
 ## Safety guardrails
 
