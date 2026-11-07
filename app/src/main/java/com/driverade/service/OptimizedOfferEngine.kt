@@ -33,6 +33,30 @@ class OptimizedOfferEngine : AccessibilityService() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val testPillReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ACTION_TEST_OFFER_CARD) {
+                val platform = intent.getStringExtra(EXTRA_TEST_PLATFORM).orEmpty()
+                val raw = intent.getStringExtra(EXTRA_TEST_NODES).orEmpty()
+                if (platform !in setOf("UBER", "UBER_EATS", "LYFT", "DOORDASH", "GRUBHUB", "HICH") ||
+                    raw.isBlank() || raw.length > 6000) {
+                    InternalDiagnosticsLogger.logInteraction(this@OptimizedOfferEngine, "SYNTHETIC_TEST_INVALID", "Invalid platform or card length")
+                    return
+                }
+                val nodes = raw.lines().map { it.trim() }.filter { it.isNotEmpty() }.take(60)
+                val reason = OfferScreenClassifier.rejectionReason(nodes)
+                val accepted = OfferScreenClassifier.isActiveOffer(nodes)
+                val evaluation = if (accepted) parseOfferNodes(platform, "synthetic.test", nodes) else null
+                val status = when {
+                    !accepted -> "GATE_REJECT"
+                    evaluation == null -> "PARSE_FAIL"
+                    else -> "PASS"
+                }
+                InternalDiagnosticsLogger.logInteraction(this@OptimizedOfferEngine, "SYNTHETIC_TEST_RESULT",
+                    "source=SYNTHETIC platform=$platform status=$status gate=$reason nodes=${nodes.size} " +
+                    "payout=${evaluation?.payout ?: "NA"} minutes=${evaluation?.totalMinutes ?: "NA"} " +
+                    "miles=${evaluation?.totalMiles ?: "NA"} hourly=${evaluation?.hourlyRate ?: "NA"} " +
+                    "target=${evaluation?.meetsTarget ?: "NA"}; no live counters, overlays, telemetry or alerts")
+                return
+            }
             if (intent?.action != ACTION_TEST_ALERT_PILL) return
             val sample = OfferEvaluation(
                 platform = "TEST",
@@ -103,6 +127,9 @@ class OptimizedOfferEngine : AccessibilityService() {
 
     companion object {
         const val ACTION_TEST_ALERT_PILL = "com.driverade.action.TEST_ALERT_PILL"
+        const val ACTION_TEST_OFFER_CARD = "com.driverade.action.TEST_OFFER_CARD"
+        const val EXTRA_TEST_PLATFORM = "test_platform"
+        const val EXTRA_TEST_NODES = "test_nodes"
         private const val TAG = "OptimizedOfferEngine"
         private const val OVERLAY_DURATION_MS = 9000L
 
@@ -128,7 +155,7 @@ class OptimizedOfferEngine : AccessibilityService() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         guidance = GuideHighlighter(this)
         visualDebug = VisualDebugCapture(this)
-        val filter = IntentFilter(ACTION_TEST_ALERT_PILL)
+        val filter = IntentFilter().apply { addAction(ACTION_TEST_ALERT_PILL); addAction(ACTION_TEST_OFFER_CARD) }
         if (Build.VERSION.SDK_INT >= 33) {
             registerReceiver(testPillReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
@@ -162,13 +189,13 @@ class OptimizedOfferEngine : AccessibilityService() {
         }
         guidance?.clear()
 
-        InternalDiagnosticsLogger.logInteraction(this, "EVENT_INGEST", "Received accessibility event from package: $pkgName (Type: ${event.eventType})")
+        InternalDiagnosticsLogger.logRoutine(this, "EVENT_INGEST", "package=$pkgName type=${event.eventType}")
 
         if (resolvePlatform(pkgName) != null) logWindowVisibility(event, pkgName)
 
         val platform = resolvePlatform(pkgName)
         if (platform == null) {
-            InternalDiagnosticsLogger.logInteraction(this, "FILTER_DROP", "Package $pkgName not recognized as target platform.")
+            InternalDiagnosticsLogger.logRoutine(this, "FILTER_DROP", "package=$pkgName unrecognized")
             return
         }
 

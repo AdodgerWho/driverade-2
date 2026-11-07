@@ -22,7 +22,8 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
     private var lastCaptureElapsed = 0L
     private var serial = 0L
     private val intervalMs = 1500L
-    private val maxFiles = 40
+    companion object { const val MAX_FILES = 100 }
+    private val maxFiles = MAX_FILES
 
     fun isEnabled(): Boolean = preferences.getBoolean("enabled", false)
 
@@ -97,8 +98,15 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
             }
             check(valid) { "Invalid PNG signature" }
             log("FILE_VERIFIED", "file=${output.name} bytes=${output.length()}")
-            directory.listFiles()?.filter { it.isFile && it.extension.equals("png", true) }
-                ?.sortedByDescending { it.lastModified() }?.drop(maxFiles)?.forEach { it.delete() }
+            val retained = directory.listFiles()?.filter { it.isFile && it.extension.equals("png", true) }
+                ?.sortedWith(compareByDescending<File> { it.lastModified() }.thenByDescending { it.name }).orEmpty()
+            val excess = retained.drop(maxFiles)
+            var removed = 0
+            var failed = 0
+            excess.forEach { if (it.delete()) removed++ else failed++ }
+            if (excess.isNotEmpty()) {
+                log("RETENTION", "limit=$maxFiles before=${retained.size} removed=$removed failed=$failed remaining=${retained.size - removed}")
+            }
         } catch (error: Exception) {
             temp.delete()
             output.delete()

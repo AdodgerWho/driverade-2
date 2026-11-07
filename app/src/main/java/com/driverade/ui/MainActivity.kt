@@ -56,6 +56,7 @@ class MainActivity : AppCompatActivity() {
         setupModularNavigation()
         setupOperatingModesAndStats()
         setupAlertPillTest()
+        setupSyntheticOfferTest()
         setupThresholdControls()
         setupPlatformFilterBottomSheet()
         setupDiagnosticsAndBugReport()
@@ -226,6 +227,84 @@ class MainActivity : AppCompatActivity() {
                 setPackage(packageName)
             })
             Toast.makeText(this, "Sample alert requested", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+
+    private fun setupSyntheticOfferTest() {
+        binding.btnTestOfferCard?.setOnClickListener {
+            if (!isAccessibilityServiceEnabled()) {
+                Toast.makeText(this, "Enable Driverade Accessibility to run parser tests", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            val platforms = arrayOf("UBER", "LYFT", "UBER_EATS", "DOORDASH")
+            val cases = arrayOf(
+                "Actionable offer" to "Trip request\\nAccept\\n$18.50\\n25 min\\n5.2 mi",
+                "Earnings history (must reject)" to "Your earnings\\nTrip\\nAccept\\n$101.83\\n20 min\\n4 mi",
+                "Map pill (must reject)" to "Trip in progress\\n$12.00\\n15 min\\n2.5 mi",
+                "Missing distance (must reject)" to "Trip request\\nAccept\\n$18.50\\n25 min",
+                "Custom card text" to ""
+            )
+            var platform = platforms[0]
+            var sample = cases[0].second
+            val container = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(36, 12, 36, 0)
+            }
+            val platformButton = android.widget.Button(this).apply {
+                text = "Platform: $platform"
+                setOnClickListener {
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Synthetic platform")
+                        .setItems(platforms) { _, index ->
+                            platform = platforms[index]
+                            text = "Platform: $platform"
+                        }.show()
+                }
+            }
+            val input = EditText(this).apply {
+                minLines = 5
+                maxLines = 12
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                setText(sample)
+                hint = "One captured text node per line"
+            }
+            val caseButton = android.widget.Button(this).apply {
+                text = "Scenario: ${cases[0].first}"
+                setOnClickListener {
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Test card scenario")
+                        .setItems(cases.map { it.first }.toTypedArray()) { _, index ->
+                            sample = cases[index].second
+                            input.setText(sample)
+                            text = "Scenario: ${cases[index].first}"
+                        }.show()
+                }
+            }
+            container.addView(TextView(this).apply {
+                text = "SYNTHETIC ONLY — uses the real gate and parser; never counts as a live offer."
+            })
+            container.addView(platformButton)
+            container.addView(caseButton)
+            container.addView(input)
+            AlertDialog.Builder(this)
+                .setTitle("Inject test offer card")
+                .setView(container)
+                .setPositiveButton("Run parser") { _, _ ->
+                    val raw = input.text.toString()
+                    if (raw.isBlank() || raw.length > 6000) {
+                        Toast.makeText(this, "Enter 1–6000 characters", Toast.LENGTH_LONG).show()
+                    } else {
+                        sendBroadcast(Intent(OptimizedOfferEngine.ACTION_TEST_OFFER_CARD).apply {
+                            setPackage(packageName)
+                            putExtra(OptimizedOfferEngine.EXTRA_TEST_PLATFORM, platform)
+                            putExtra(OptimizedOfferEngine.EXTRA_TEST_NODES, raw)
+                        })
+                        Toast.makeText(this, "Synthetic result recorded in diagnostics", Toast.LENGTH_LONG).show()
+                    }
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
         }
     }
 

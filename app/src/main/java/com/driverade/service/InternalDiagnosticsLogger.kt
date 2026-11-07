@@ -19,6 +19,30 @@ object InternalDiagnosticsLogger {
     private val queued = AtomicInteger(0)
     private var store: DiagnosticSqliteStore? = null
 
+    private val routineLock = Any()
+    private val routineCounts = mutableMapOf<String, Int>()
+    private var routineLastFlush = android.os.SystemClock.elapsedRealtime()
+    private const val ROUTINE_FLUSH_MS = 15000L
+
+    /**
+     * Aggregate high-volume routine events only. Critical parser, capture, gate and
+     * alert evidence must continue through logInteraction unchanged.
+     */
+    fun logRoutine(context: Context, category: String, detail: String) {
+        var summary: String? = null
+        synchronized(routineLock) {
+            val key = "$category|$detail"
+            routineCounts[key] = (routineCounts[key] ?: 0) + 1
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (now - routineLastFlush >= ROUTINE_FLUSH_MS || routineCounts.values.sum() >= 500) {
+                summary = routineCounts.entries.joinToString("; ") { "${it.key} count=${it.value}" }.take(900)
+                routineCounts.clear()
+                routineLastFlush = now
+            }
+        }
+        summary?.let { logInteraction(context, "ROUTINE_AGGREGATE", it) }
+    }
+
     fun logInteraction(context: Context, category: String, details: String) {
         val time = SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date())
         val entry = "[$time] [$category] $details\n"
