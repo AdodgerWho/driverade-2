@@ -29,7 +29,7 @@ object InternalDiagnosticsLogger {
      * alert evidence must continue through logInteraction unchanged.
      */
     fun logRoutine(context: Context, category: String, detail: String) {
-        val summary: String?
+        var summary: String? = null
         synchronized(routineLock) {
             val key = "$category|$detail"
             routineCounts[key] = (routineCounts[key] ?: 0) + 1
@@ -38,7 +38,7 @@ object InternalDiagnosticsLogger {
                 summary = routineCounts.entries.joinToString("; ") { "${it.key} count=${it.value}" }.take(900)
                 routineCounts.clear()
                 routineLastFlush = now
-            } else summary = null
+            }
         }
         if (summary != null) logInteraction(context, "ROUTINE_AGGREGATE", summary)
     }
