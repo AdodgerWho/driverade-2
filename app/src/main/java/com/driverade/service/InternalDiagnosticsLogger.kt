@@ -40,7 +40,7 @@ object InternalDiagnosticsLogger {
                 routineLastFlush = now
             }
         }
-        if (summary != null) logInteraction(context, "ROUTINE_AGGREGATE", summary)
+        summary?.let { logInteraction(context, "ROUTINE_AGGREGATE", it) }
     }
 
     fun logInteraction(context: Context, category: String, details: String) {
