@@ -83,11 +83,11 @@ internal object DeveloperInspection {
                 val entries = JSONArray()
                 val seen = HashSet<Int>()
                 val eventSource = event.source
-                if (eventSource != null) {
+                if (eventSource != null && eventSource.packageName?.toString() == "com.ubercab.driver") {
                     entries.put(inspectRoot("eventSource", event.windowId, -1, -1, eventSource))
                     seen.add(event.windowId)
                 } else {
-                    record.put("eventSourceNull", true)
+                    record.put("eventSourceUnavailableOrNotUber", true)
                 }
                 for (w in windows.take(MAX_WINDOWS)) {
                     val root = try { w.root } catch (_: Exception) { null }
