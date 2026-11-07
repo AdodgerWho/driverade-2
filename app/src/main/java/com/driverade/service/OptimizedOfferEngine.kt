@@ -52,6 +52,13 @@ class OptimizedOfferEngine : AccessibilityService() {
                     evaluation == null -> "PARSE_FAIL"
                     else -> "PASS"
                 }
+                val fieldDiagnostic = if (platform == "UBER" || platform == "UBER_EATS") {
+                    UberOfferFieldResolver.resolve(nodes.map { UberOfferFieldResolver.Node(it) }).also {
+                        InternalDiagnosticsLogger.logInteraction(this@OptimizedOfferEngine,
+                            "UBER_FIELD_PROVENANCE", "source=SYNTHETIC " + it.diagnostic())
+                    }.let { "\nUber offer field binding: " + it.source +
+                        " | payout=" + (it.payout ?: "NA") + "\n" }
+                } else ""
                 val report = OfferParserComparison.compare(platform, nodes, accepted, evaluation?.let {
                     OfferParserComparison.ActiveSnapshot(it.payout, it.totalMinutes, it.totalMiles, it.hourlyRate)
                 })
@@ -63,7 +70,7 @@ class OptimizedOfferEngine : AccessibilityService() {
                 InternalDiagnosticsLogger.logInteraction(this@OptimizedOfferEngine, "PARSER_COMPARISON",
                     report.diagnostic("SYNTHETIC", requestId, reason))
                 sendSyntheticResult(requestId,
-                    "Active path: $status | gate: $reason\n\n" + report.display())
+                    "Active path: $status | gate: $reason\n\n" + report.display() + fieldDiagnostic)
                 return
             }
             if (intent?.action != ACTION_TEST_ALERT_PILL) return
@@ -221,15 +228,16 @@ class OptimizedOfferEngine : AccessibilityService() {
         InternalDiagnosticsLogger.logInteraction(this, "PLATFORM_MATCH", "capture=$captureId platform=$platform eventType=${event.eventType} eventTime=${event.eventTime} windowId=${event.windowId} class=${event.className}")
 
         val collectedNodes = LinkedHashSet<String>()
+        val fieldNodes = mutableListOf<UberOfferFieldResolver.Node>()
 
         event.source?.let { src ->
-            traverseNodeTree(src, collectedNodes, 0)
+            traverseNodeTree(src, collectedNodes, 0, fieldNodes, event.windowId)
         }
 
         rootInActiveWindow?.let { root ->
             val rootPkg = root.packageName?.toString()
             if ((platform != "UBER" && platform != "UBER_EATS") || rootPkg == pkgName) {
-                traverseNodeTree(root, collectedNodes, 0)
+                traverseNodeTree(root, collectedNodes, 0, fieldNodes, event.windowId)
             }
         }
 
@@ -238,7 +246,7 @@ class OptimizedOfferEngine : AccessibilityService() {
                 windowInfo.root?.let { winRoot ->
                     val winPkg = winRoot.packageName?.toString() ?: pkgName
                     if (if (platform == "UBER" || platform == "UBER_EATS") winPkg == pkgName else resolvePlatform(winPkg) != null) {
-                        traverseNodeTree(winRoot, collectedNodes, 0)
+                        traverseNodeTree(winRoot, collectedNodes, 0, fieldNodes, windowInfo.id)
                     }
                 }
             }
@@ -253,7 +261,18 @@ class OptimizedOfferEngine : AccessibilityService() {
             return
         }
 
-        val rawList = collectedNodes.toList()
+        val resolvedUber = if (platform == "UBER" || platform == "UBER_EATS") {
+            UberOfferFieldResolver.resolve(fieldNodes).also { resolved ->
+                InternalDiagnosticsLogger.logInteraction(this, "UBER_FIELD_PROVENANCE",
+                    "capture=$captureId " + resolved.diagnostic())
+            }
+        } else null
+        // A verified payout is tied to a single offer window. Avoid unrelated
+        // windows in its calculation; preserve original behavior otherwise.
+        val rawList = if (resolvedUber?.payout != null && resolvedUber.windowId != null) {
+            fieldNodes.asSequence().filter { it.visible && it.windowId == resolvedUber.windowId }
+                .map { it.text }.distinct().toList()
+        } else collectedNodes.toList()
         val joinedTextLower = rawList.joinToString(" ").lowercase(Locale.US)
         val hasValidKeyword = OFFER_KEYWORDS.any { joinedTextLower.contains(it) } ||
             joinedTextLower.contains("tip") || joinedTextLower.contains("earnings")
@@ -291,7 +310,7 @@ class OptimizedOfferEngine : AccessibilityService() {
         }
 
         InternalDiagnosticsLogger.logInteraction(this, "PARSE_INPUT", "capture=$captureId payoutCandidates=${rawList.flatMap { PAYOUT_REGEX.findAll(it).map { m -> m.value }.toList() }.take(15)} durationCandidates=${MINUTES_REGEX.findAll(joinedTextLower).map { it.value }.take(15).toList()} distanceCandidates=${MILES_REGEX.findAll(joinedTextLower).map { it.value }.take(15).toList()}")
-        val evaluation = parseOfferNodes(platform, pkgName, rawList)
+        val evaluation = parseOfferNodes(platform, pkgName, rawList, resolvedUber?.payout)
         // Shadow comparison reads the same gated live nodes. Its output is diagnostic only.
         // Do not alter the existing parse result, alerts, dedupe or offer statistics.
         if (platform == "UBER" || platform == "LYFT") {
@@ -368,12 +387,22 @@ class OptimizedOfferEngine : AccessibilityService() {
     private fun traverseNodeTree(
         node: AccessibilityNodeInfo?,
         results: MutableSet<String>,
-        depth: Int
+        depth: Int,
+        fieldNodes: MutableList<UberOfferFieldResolver.Node>,
+        windowId: Int
     ) {
         if (node == null || depth > 28) return
 
-        node.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { results.add(it) }
-        node.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { results.add(it) }
+        val viewId = node.viewIdResourceName
+        val visible = node.isVisibleToUser
+        node.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            results.add(it)
+            fieldNodes.add(UberOfferFieldResolver.Node(it, viewId, windowId, visible))
+        }
+        node.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            results.add(it)
+            fieldNodes.add(UberOfferFieldResolver.Node(it, viewId, windowId, visible))
+        }
 
         val count = node.childCount
         for (i in 0 until count) {
@@ -383,7 +412,7 @@ class OptimizedOfferEngine : AccessibilityService() {
                 null
             }
             if (child != null) {
-                traverseNodeTree(child, results, depth + 1)
+                traverseNodeTree(child, results, depth + 1, fieldNodes, windowId)
             }
         }
     }
@@ -391,7 +420,8 @@ class OptimizedOfferEngine : AccessibilityService() {
     fun parseOfferNodes(
         platform: String,
         packageName: String,
-        texts: List<String>
+        texts: List<String>,
+        verifiedPayout: Double? = null
     ): OfferEvaluation? {
         var payout = -1.0
         var totalMinutes = 0.0
@@ -433,6 +463,9 @@ class OptimizedOfferEngine : AccessibilityService() {
             }
         }
 
+        if (verifiedPayout != null && (platform == "UBER" || platform == "UBER_EATS")) {
+            payout = verifiedPayout
+        }
         if (payout <= 0.0) return null
 
         if (totalMinutes <= 0.0 || totalMiles <= 0.0) return null
