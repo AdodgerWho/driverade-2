@@ -2,6 +2,7 @@ package com.driverade.service
 
 import android.content.Context
 import android.util.Log
+import com.driverade.BuildConfig
 import com.driverade.data.DriverPreferences
 import java.io.File
 import java.io.FileWriter
@@ -43,6 +44,7 @@ object InternalDiagnosticsLogger {
     }
 
     fun initializeSession(context: Context, prefs: DriverPreferences) {
+        logInteraction(context, "BUILD_ID", "version=${BuildConfig.VERSION_NAME} code=${BuildConfig.VERSION_CODE} type=${BuildConfig.BUILD_TYPE} sha=${BuildConfig.SOURCE_SHA} branch=${BuildConfig.SOURCE_BRANCH} run=${BuildConfig.CI_RUN_ID} android=${android.os.Build.VERSION.SDK_INT} device=${android.os.Build.MANUFACTURER}/${android.os.Build.MODEL}")
         val file = File(context.filesDir, FILENAME)
         val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
         
