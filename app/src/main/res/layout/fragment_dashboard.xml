@@ -321,6 +321,14 @@
                 android:text="Test alert pill"
                 android:textAllCaps="false"
                 android:contentDescription="Show a sample offer alert overlay" />
+            <Button
+                android:id="@+id/btnTestOfferCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Inject synthetic offer card"
+                android:textAllCaps="false"
+                android:contentDescription="Run synthetic Uber or Lyft offer parser diagnostics without live offers" />
         </LinearLayout>
 
         <!-- PAGE 2: HEATMAPS / DENSITY -->
