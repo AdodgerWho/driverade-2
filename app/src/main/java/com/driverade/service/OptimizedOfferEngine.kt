@@ -52,11 +52,13 @@ class OptimizedOfferEngine : AccessibilityService() {
                     evaluation == null -> "PARSE_FAIL"
                     else -> "PASS"
                 }
+                var provenanceStatus: String? = null
                 val fieldDiagnostic = if (platform == "UBER" || platform == "UBER_EATS") {
                     UberOfferFieldResolver.resolve(nodes.map { UberOfferFieldResolver.Node(it) }).also {
                         InternalDiagnosticsLogger.logInteraction(this@OptimizedOfferEngine,
                             "UBER_FIELD_PROVENANCE", "source=SYNTHETIC " + it.diagnostic())
-                    }.let { "\nUber offer field binding: " + it.source +
+                    }.let { provenanceStatus = it.source
+                        "\nUber offer field binding: " + it.source +
                         " | payout=" + (it.payout ?: "NA") + "\n" }
                 } else ""
                 val report = OfferParserComparison.compare(platform, nodes, accepted, evaluation?.let {
@@ -70,7 +72,8 @@ class OptimizedOfferEngine : AccessibilityService() {
                 InternalDiagnosticsLogger.logInteraction(this@OptimizedOfferEngine, "PARSER_COMPARISON",
                     report.diagnostic("SYNTHETIC", requestId, reason))
                 sendSyntheticResult(requestId,
-                    "Active path: $status | gate: $reason\n\n" + report.display() + fieldDiagnostic)
+                    "Active path: $status | gate: $reason\n\n" + report.display() + fieldDiagnostic,
+                    status, provenanceStatus)
                 return
             }
             if (intent?.action != ACTION_TEST_ALERT_PILL) return
@@ -151,6 +154,8 @@ class OptimizedOfferEngine : AccessibilityService() {
         const val ACTION_TEST_OFFER_RESULT = "com.driverade.action.TEST_OFFER_RESULT"
         const val EXTRA_TEST_REQUEST_ID = "test_request_id"
         const val EXTRA_TEST_RESULT_TEXT = "test_result_text"
+        const val EXTRA_TEST_RESULT_STATUS = "test_result_status"
+        const val EXTRA_TEST_RESULT_PROVENANCE = "test_result_provenance"
         private const val TAG = "OptimizedOfferEngine"
         private const val OVERLAY_DURATION_MS = 9000L
 
@@ -363,11 +368,14 @@ class OptimizedOfferEngine : AccessibilityService() {
         }
     }
 
-    private fun sendSyntheticResult(requestId: String, text: String) {
+    private fun sendSyntheticResult(requestId: String, text: String,
+                                    status: String? = null, provenance: String? = null) {
         sendBroadcast(Intent(ACTION_TEST_OFFER_RESULT).apply {
             setPackage(packageName)
             putExtra(EXTRA_TEST_REQUEST_ID, requestId)
             putExtra(EXTRA_TEST_RESULT_TEXT, text.take(1800))
+            putExtra(EXTRA_TEST_RESULT_STATUS, status)
+            putExtra(EXTRA_TEST_RESULT_PROVENANCE, provenance)
         })
     }
 
