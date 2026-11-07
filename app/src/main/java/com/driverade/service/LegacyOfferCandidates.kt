@@ -30,10 +30,10 @@ internal object LegacyOfferCandidates {
         }
     }
 
-    private val lyftRate = Regex("""\\$(\\d+(?:\\.\\d{1,2})?)/hr\\s+est\\.?\\s+rate\\s+for\\s+this\\s+ride""", RegexOption.IGNORE_CASE)
-    private val money = Regex("""\\$(\\d+(?:\\.\\d{1,2})?)""")
-    private val leg = Regex("""(\\d+(?:\\.\\d+)?)\\s*min(?:s|utes?)?\\s*[•·|,()]?\\s*(\\d+(?:\\.\\d+)?)\\s*mi\\b""", RegexOption.IGNORE_CASE)
-    private val uberAccept = Regex("""Accept\\s*[•·]\\s*\\$(\\d+(?:\\.\\d{1,2})?)""", RegexOption.IGNORE_CASE)
+    private val lyftRate = Regex("""\$(\d+(?:\.\d{1,2})?)/hr\s+est\.?\s+rate\s+for\s+this\s+ride""", RegexOption.IGNORE_CASE)
+    private val money = Regex("""\$(\d+(?:\.\d{1,2})?)""")
+    private val leg = Regex("""(\d+(?:\.\d+)?)\s*min(?:s|utes?)?\s*[•·|,()]?\s*(\d+(?:\.\d+)?)\s*mi\b""", RegexOption.IGNORE_CASE)
+    private val uberAccept = Regex("""Accept\s*[•·]\s*\$(\d+(?:\.\d{1,2})?)""", RegexOption.IGNORE_CASE)
 
     /** Recognize a Lyft-provided estimate without confusing it for the payout. */
     fun lyft(texts: List<String>): Candidate? {
