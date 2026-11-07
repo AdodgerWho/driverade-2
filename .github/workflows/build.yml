@@ -2,7 +2,7 @@ name: Android CI Build v3.63
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "experiment/legacy-parser-adapters-pr27" ]
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
