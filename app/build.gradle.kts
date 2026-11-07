@@ -26,6 +26,9 @@ android {
         versionCode = System.getenv("DRIVERADE_VERSION_CODE")?.toIntOrNull() ?: 62
         versionName = "3.64"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "SOURCE_SHA", "\"${System.getenv("GITHUB_SHA") ?: "local"}\"")
+        buildConfigField("String", "SOURCE_BRANCH", "\"${System.getenv("GITHUB_HEAD_REF") ?: System.getenv("GITHUB_REF_NAME") ?: "local"}\"")
+        buildConfigField("String", "CI_RUN_ID", "\"${System.getenv("GITHUB_RUN_ID") ?: "local"}\"")
     }
 
     buildTypes {
@@ -37,6 +40,7 @@ android {
     }
 
     buildFeatures {
+        buildConfig = true
         viewBinding = true
     }
 
