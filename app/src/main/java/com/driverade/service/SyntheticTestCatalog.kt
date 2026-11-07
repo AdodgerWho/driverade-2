@@ -50,7 +50,7 @@ internal object SyntheticTestCatalog {
 
     fun summary(outcomes: List<Outcome>, total: Int = presets.size): String {
         val passed = outcomes.count { it.meetsExpectation }
-        val text = StringBuilder("Driverade synthetic batch: \$passed/${outcomes.size} expectations met")
+        val text = StringBuilder("Driverade synthetic batch: $passed/${outcomes.size} expectations met")
         if (outcomes.size < total) text.append(" (").append(total - outcomes.size).append(" not run)")
         outcomes.forEachIndexed { index, o ->
             text.append("\n").append(index + 1).append(". ")
