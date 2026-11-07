@@ -27,8 +27,10 @@ import com.driverade.service.BugReportManager
 import com.driverade.service.FeatureDiagnostics
 import com.driverade.service.DriveradeState
 import com.driverade.service.LoggerService
+import com.driverade.service.InternalDiagnosticsLogger
 import com.driverade.service.OptimizedOfferEngine
 import com.driverade.service.ShiftTracker
+import com.driverade.service.SyntheticTestCatalog
 import com.driverade.service.TipLedger
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import kotlinx.coroutines.flow.collectLatest
@@ -43,19 +45,40 @@ class MainActivity : AppCompatActivity() {
 
     private var comparisonResultReceiverRegistered = false
     private var pendingComparisonRequestId: String? = null
+    private var activeBatch: List<SyntheticTestCatalog.Case>? = null
+    private val batchOutcomes = mutableListOf<SyntheticTestCatalog.Outcome>()
+    private var batchIndex = 0
+    private val batchHandler = Handler(Looper.getMainLooper())
+    private var batchTimeout: Runnable? = null
+    private val batchTimeoutMillis = 8_000L
     private val comparisonResultReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action != OptimizedOfferEngine.ACTION_TEST_OFFER_RESULT) return
             val id = intent.getStringExtra(OptimizedOfferEngine.EXTRA_TEST_REQUEST_ID)
             if (id == null || id != pendingComparisonRequestId) return
             pendingComparisonRequestId = null
+            batchTimeout?.let { batchHandler.removeCallbacks(it) }
+            batchTimeout = null
             val result = intent.getStringExtra(OptimizedOfferEngine.EXTRA_TEST_RESULT_TEXT)
                 ?: "No comparison details were returned."
-            AlertDialog.Builder(this@MainActivity)
-                .setTitle("Parser comparison (synthetic)")
-                .setMessage(result)
-                .setPositiveButton("Close", null)
-                .show()
+            val activeCases = activeBatch
+            if (activeCases != null) {
+                val testCase = activeCases[batchIndex]
+                batchOutcomes.add(SyntheticTestCatalog.Outcome(
+                    testCase,
+                    intent.getStringExtra(OptimizedOfferEngine.EXTRA_TEST_RESULT_STATUS) ?: "UNKNOWN",
+                    intent.getStringExtra(OptimizedOfferEngine.EXTRA_TEST_RESULT_PROVENANCE),
+                    result
+                ))
+                batchIndex += 1
+                batchHandler.post { runNextSyntheticCase() }
+            } else {
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Parser comparison (synthetic)")
+                    .setMessage(result)
+                    .setPositiveButton("Close", null)
+                    .show()
+            }
         }
     }
 
@@ -111,6 +134,7 @@ class MainActivity : AppCompatActivity() {
             comparisonResultReceiverRegistered = false
         }
         pendingComparisonRequestId = null
+        cancelSyntheticBatch()
         super.onPause()
         shiftHandler.removeCallbacks(shiftUpdateRunnable)
     }
@@ -269,25 +293,83 @@ class MainActivity : AppCompatActivity() {
     }
 
 
+    private fun sendSyntheticTest(platform: String, nodes: String, requestId: String) {
+        pendingComparisonRequestId = requestId
+        sendBroadcast(Intent(OptimizedOfferEngine.ACTION_TEST_OFFER_CARD).apply {
+            setPackage(packageName)
+            putExtra(OptimizedOfferEngine.EXTRA_TEST_PLATFORM, platform)
+            putExtra(OptimizedOfferEngine.EXTRA_TEST_NODES, nodes)
+            putExtra(OptimizedOfferEngine.EXTRA_TEST_REQUEST_ID, requestId)
+        })
+    }
+
+    private fun cancelSyntheticBatch() {
+        batchTimeout?.let { batchHandler.removeCallbacks(it) }
+        batchTimeout = null
+        activeBatch = null
+        batchOutcomes.clear()
+        batchIndex = 0
+    }
+
+    private fun startSyntheticBatch() {
+        if (activeBatch != null || pendingComparisonRequestId != null) {
+            Toast.makeText(this, "A parser test is already running", Toast.LENGTH_SHORT).show()
+            return
+        }
+        activeBatch = SyntheticTestCatalog.presets
+        batchOutcomes.clear()
+        batchIndex = 0
+        runNextSyntheticCase()
+    }
+
+    private fun runNextSyntheticCase() {
+        val cases = activeBatch ?: return
+        if (batchIndex >= cases.size) {
+            val summary = SyntheticTestCatalog.summary(batchOutcomes.toList(), cases.size)
+            InternalDiagnosticsLogger.logInteraction(this, "SYNTHETIC_BATCH_SUMMARY",
+                "total=${cases.size} expected=${batchOutcomes.count { it.meetsExpectation }} " +
+                    "unexpected=${batchOutcomes.count { !it.meetsExpectation }} rawText=OMITTED")
+            cancelSyntheticBatch()
+            AlertDialog.Builder(this)
+                .setTitle("Batch parser results (synthetic)")
+                .setMessage(summary)
+                .setPositiveButton("Close", null)
+                .setNeutralButton("Share summary") { _, _ ->
+                    startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, summary)
+                    }, "Share synthetic test summary"))
+                }
+                .show()
+            return
+        }
+        val test = cases[batchIndex]
+        val id = UUID.randomUUID().toString()
+        sendSyntheticTest(test.platform, test.nodes, id)
+        val timeout = Runnable {
+            if (activeBatch !== cases || pendingComparisonRequestId != id) return@Runnable
+            pendingComparisonRequestId = null
+            batchOutcomes.add(SyntheticTestCatalog.Outcome(test, "TIMEOUT", null,
+                "Service did not return a result within the timeout"))
+            InternalDiagnosticsLogger.logInteraction(this, "SYNTHETIC_BATCH_TIMEOUT",
+                "index=${batchIndex + 1} platform=${test.platform} rawText=OMITTED")
+            batchIndex += 1
+            batchTimeout = null
+            runNextSyntheticCase()
+        }
+        batchTimeout = timeout
+        batchHandler.postDelayed(timeout, batchTimeoutMillis)
+    }
+
     private fun setupSyntheticOfferTest() {
         binding.btnTestOfferCard?.setOnClickListener {
             if (!isAccessibilityServiceEnabled()) {
                 Toast.makeText(this, "Enable Driverade Accessibility to run parser tests", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
-            // The delivery integrations are not validated yet; keep this UI rideshare-only.
             val platforms = arrayOf("UBER", "LYFT", "HICH")
-            val cases = arrayOf(
-                "Uber actionable ride" to "Trip request\nAccept\n$18.50\n25 min\n5.2 mi",
-                "Uber reservation" to "Trip request\nAccept • $24.50\n12 min • 3.2 mi\n18 min • 6.4 mi",
-                "Lyft estimated rate" to "Ride request\nAccept\n$18.50\n$37/hr est rate for this ride\n5 min • 1.0 mi\n25 min • 8.0 mi",
-                "HICH basic offer" to "Ride request\nAccept\n$16.00\n24 min\n6.0 mi",
-                "Earnings history (reject)" to "Your earnings\nTrip\nAccept\n$101.83\n20 min\n4 mi",
-                "Map pill (reject)" to "Trip in progress\n$12.00\n15 min\n2.5 mi",
-                "Missing distance (reject)" to "Trip request\nAccept\n$18.50\n25 min",
-                "Custom card text" to ""
-            )
-            var platform = platforms[0]
+            val cases = SyntheticTestCatalog.presets
+            var platform = "UBER"
             var selectedCase = 0
             val container = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -297,22 +379,30 @@ class MainActivity : AppCompatActivity() {
                 minLines = 5
                 maxLines = 12
                 inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                setText(cases[selectedCase].second)
+                setText(cases[selectedCase].nodes)
                 hint = "One captured text node per line"
             }
+            lateinit var platformButton: android.widget.Button
             val caseButton = android.widget.Button(this).apply {
-                text = "Scenario: " + cases[selectedCase].first
+                text = "Scenario: " + cases[selectedCase].name
                 setOnClickListener {
+                    val choices = cases.map { it.name } + "Custom card text"
                     AlertDialog.Builder(this@MainActivity)
                         .setTitle("Test card scenario")
-                        .setItems(cases.map { it.first }.toTypedArray()) { _, index ->
+                        .setItems(choices.toTypedArray()) { _, index ->
                             selectedCase = index
-                            input.setText(cases[index].second)
-                            text = "Scenario: " + cases[index].first
+                            if (index < cases.size) {
+                                input.setText(cases[index].nodes)
+                                platform = cases[index].platform
+                                platformButton.text = "Platform: $platform"
+                            } else {
+                                input.setText("")
+                            }
+                            text = "Scenario: " + choices[index]
                         }.show()
                 }
             }
-            val platformButton = android.widget.Button(this).apply {
+            platformButton = android.widget.Button(this).apply {
                 text = "Platform: $platform"
                 setOnClickListener {
                     AlertDialog.Builder(this@MainActivity)
@@ -320,42 +410,31 @@ class MainActivity : AppCompatActivity() {
                         .setItems(platforms) { _, index ->
                             platform = platforms[index]
                             text = "Platform: $platform"
-                            selectedCase = when (platform) {
-                                "LYFT" -> 2
-                                "HICH" -> 3
-                                else -> 0
-                            }
-                            caseButton.text = "Scenario: " + cases[selectedCase].first
-                            input.setText(cases[selectedCase].second)
                         }.show()
                 }
             }
             container.addView(TextView(this).apply {
-                text = "SYNTHETIC ONLY: active parser and legacy candidate run side by side. " +
-                    "Results appear here and in diagnostics; never count as live offers."
+                text = "SYNTHETIC ONLY: run one editable card or all built-in scenarios " +
+                    "sequentially. No live offers, counters, overlays or alerts."
             })
             container.addView(platformButton)
             container.addView(caseButton)
             container.addView(input)
             AlertDialog.Builder(this)
-                .setTitle("Inject and compare offer card")
+                .setTitle("Inject and compare offer cards")
                 .setView(container)
-                .setPositiveButton("Run comparison") { _, _ ->
+                .setPositiveButton("Run one") { _, _ ->
                     val raw = input.text.toString()
                     if (raw.isBlank() || raw.length > 6000) {
                         Toast.makeText(this, "Enter 1–6000 characters", Toast.LENGTH_LONG).show()
+                    } else if (activeBatch != null || pendingComparisonRequestId != null) {
+                        Toast.makeText(this, "A parser test is already running", Toast.LENGTH_SHORT).show()
                     } else {
-                        val requestId = UUID.randomUUID().toString()
-                        pendingComparisonRequestId = requestId
-                        sendBroadcast(Intent(OptimizedOfferEngine.ACTION_TEST_OFFER_CARD).apply {
-                            setPackage(packageName)
-                            putExtra(OptimizedOfferEngine.EXTRA_TEST_PLATFORM, platform)
-                            putExtra(OptimizedOfferEngine.EXTRA_TEST_NODES, raw)
-                            putExtra(OptimizedOfferEngine.EXTRA_TEST_REQUEST_ID, requestId)
-                        })
+                        sendSyntheticTest(platform, raw, UUID.randomUUID().toString())
                         Toast.makeText(this, "Comparing parsers; results saved to diagnostics", Toast.LENGTH_LONG).show()
                     }
                 }
+                .setNeutralButton("Run batch") { _, _ -> startSyntheticBatch() }
                 .setNegativeButton("Cancel", null)
                 .show()
         }
