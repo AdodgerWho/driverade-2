@@ -52,6 +52,7 @@ class OptimizedOfferEngine : AccessibilityService() {
     private var testReceiverRegistered = false
     private var lastGuideTrace = ""
     private var lastGuideTraceAt = 0L
+    private var diagnosticCaptureSequence = 0L
     private var lastVisibilitySignature = ""
     private var lastVisibilityLogAt = 0L
 
@@ -142,6 +143,7 @@ class OptimizedOfferEngine : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
         val pkgName = event.packageName?.toString() ?: "unknown.package"
+        val captureId = "${System.currentTimeMillis()}-${++diagnosticCaptureSequence}"
         visualDebug?.observe(event, pkgName)
         if (GuidedSettingsState.isActive(this) && (pkgName == "com.android.settings" || pkgName == "com.google.android.projection.gearhead")) {
             val guide = GuidedSettingsState.guide(this)
@@ -175,7 +177,7 @@ class OptimizedOfferEngine : AccessibilityService() {
             return
         }
 
-        InternalDiagnosticsLogger.logInteraction(this, "PLATFORM_MATCH", "Matched active platform: $platform")
+        InternalDiagnosticsLogger.logInteraction(this, "PLATFORM_MATCH", "capture=$captureId platform=$platform eventType=${event.eventType} eventTime=${event.eventTime} windowId=${event.windowId} class=${event.className}")
 
         val collectedNodes = LinkedHashSet<String>()
 
@@ -203,7 +205,7 @@ class OptimizedOfferEngine : AccessibilityService() {
             InternalDiagnosticsLogger.logInteraction(this, "WARN", "Multi-window inspection warning: ${e.message}")
         }
 
-        InternalDiagnosticsLogger.logInteraction(this, "NODE_SCRAPE", "Collected ${collectedNodes.size} unique nodes from window hierarchy.")
+        InternalDiagnosticsLogger.logInteraction(this, "NODE_SCRAPE", "capture=$captureId nodes=${collectedNodes.size} boundedText=${collectedNodes.take(30).map { it.take(80) }}")
 
         if (collectedNodes.isEmpty()) {
             InternalDiagnosticsLogger.logInteraction(this, "PARSE_ABORT", "No text nodes found to evaluate.")
@@ -247,6 +249,7 @@ class OptimizedOfferEngine : AccessibilityService() {
             return
         }
 
+        InternalDiagnosticsLogger.logInteraction(this, "PARSE_INPUT", "capture=$captureId payoutCandidates=${rawList.flatMap { PAYOUT_REGEX.findAll(it).map { m -> m.value }.toList() }.take(15)} durationCandidates=${MINUTES_REGEX.findAll(joinedTextLower).map { it.value }.take(15).toList()} distanceCandidates=${MILES_REGEX.findAll(joinedTextLower).map { it.value }.take(15).toList()}")
         val evaluation = parseOfferNodes(platform, pkgName, rawList)
         
         if (evaluation == null) {
@@ -254,10 +257,11 @@ class OptimizedOfferEngine : AccessibilityService() {
             return
         }
 
+        InternalDiagnosticsLogger.logInteraction(this, "PARSE_RESULT", "capture=$captureId payout=${evaluation.payout} minutes=${evaluation.totalMinutes} miles=${evaluation.totalMiles} hourly=${evaluation.hourlyRate} target=${evaluation.meetsTarget}")
         val signature = "${evaluation.platform}_${evaluation.payout}_${evaluation.totalMinutes}_${evaluation.totalMiles}"
         val now = System.currentTimeMillis()
         if (signature == lastOfferSignature && (now - lastOfferTimestamp) < 45000L) {
-            InternalDiagnosticsLogger.logInteraction(this, "DEBOUNCE", "Duplicate offer suppressed within 45s window.")
+            InternalDiagnosticsLogger.logInteraction(this, "DEBOUNCE", "capture=$captureId suppressed=true elapsedMs=${now-lastOfferTimestamp}")
             return
         }
         lastOfferSignature = signature
@@ -271,7 +275,7 @@ class OptimizedOfferEngine : AccessibilityService() {
         if (evaluation.meetsTarget) prefs.todayGoodOffersCount += 1
         if (prefs.loggerEnabled) LoggerService.recordOfferDiagnostic(this, prefs, evaluation)
         if (prefs.alerterEnabled) {
-            InternalDiagnosticsLogger.logInteraction(this, "ALERT_DISPATCH", "Live offer alert requested for $platform")
+            InternalDiagnosticsLogger.logInteraction(this, "ALERT_DISPATCH", "capture=$captureId live offer alert requested for $platform")
             broadcastToAndroidAuto(evaluation)
             showHourlyRateOverlay(evaluation)
         } else {
