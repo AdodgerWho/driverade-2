@@ -162,13 +162,13 @@ class OptimizedOfferEngine : AccessibilityService() {
         }
         guidance?.clear()
 
-        InternalDiagnosticsLogger.logInteraction(this, "EVENT_INGEST", "Received accessibility event from package: $pkgName (Type: ${event.eventType})")
+        InternalDiagnosticsLogger.logRoutine(this, "EVENT_INGEST", "package=$pkgName type=${event.eventType}")
 
         if (resolvePlatform(pkgName) != null) logWindowVisibility(event, pkgName)
 
         val platform = resolvePlatform(pkgName)
         if (platform == null) {
-            InternalDiagnosticsLogger.logInteraction(this, "FILTER_DROP", "Package $pkgName not recognized as target platform.")
+            InternalDiagnosticsLogger.logRoutine(this, "FILTER_DROP", "package=$pkgName unrecognized")
             return
         }
 
