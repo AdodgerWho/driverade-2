@@ -2,6 +2,9 @@ package com.driverade.service
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
@@ -25,11 +28,81 @@ class OptimizedOfferEngine : AccessibilityService() {
     private lateinit var prefs: DriverPreferences
     private var windowManager: WindowManager? = null
     private var activeOverlayView: LinearLayout? = null
+    private var guidance: GuideHighlighter? = null
+    private var visualDebug: VisualDebugCapture? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val testPillReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != ACTION_TEST_ALERT_PILL) return
+            val sample = OfferEvaluation(
+                platform = "TEST",
+                packageName = packageName,
+                payout = 18.50,
+                totalMiles = 5.2,
+                totalMinutes = 25.0,
+                hourlyRate = 44.40,
+                dollarsPerMile = 3.56,
+                meetsTarget = true,
+                rawNodes = emptyList()
+            )
+            showHourlyRateOverlay(sample)
+            InternalDiagnosticsLogger.logInteraction(this@OptimizedOfferEngine, "PILL_TEST", "Sample overlay requested locally")
+        }
+    }
+    private var testReceiverRegistered = false
+    private var lastGuideTrace = ""
+    private var lastGuideTraceAt = 0L
+    private var diagnosticCaptureSequence = 0L
+    private var lastVisibilitySignature = ""
+    private var lastVisibilityLogAt = 0L
+
+    /** Window metadata only; never capture screen text or infer projection visibility. */
+    private fun logWindowVisibility(event: AccessibilityEvent, eventPackage: String) {
+        val started = android.os.SystemClock.elapsedRealtime()
+        try {
+            val activePackage = rootInActiveWindow?.packageName?.toString()
+            val accessibleWindows = windows.orEmpty()
+            val targetWindows = accessibleWindows.filter { window ->
+                val pkg = window.root?.packageName?.toString()
+                pkg != null && resolvePlatform(pkg) != null
+            }
+            val eventWindow = accessibleWindows.firstOrNull { it.id == event.windowId }
+            val visibility = when {
+                activePackage == eventPackage -> "ACTIVE_ROOT"
+                targetWindows.any { it.root?.packageName?.toString() == eventPackage } -> "OTHER_ACCESSIBLE_WINDOW"
+                else -> "NOT_OBSERVED"
+            }
+            val type = when (eventWindow?.type) {
+                android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION -> "APPLICATION"
+                android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD -> "INPUT_METHOD"
+                android.view.accessibility.AccessibilityWindowInfo.TYPE_SYSTEM -> "SYSTEM"
+                android.view.accessibility.AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY -> "ACCESSIBILITY_OVERLAY"
+                else -> "UNKNOWN"
+            }
+            val signature = "$eventPackage|$activePackage|$visibility|$type|${eventWindow?.isActive}|${eventWindow?.isFocused}|${targetWindows.size}"
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (signature != lastVisibilitySignature || now - lastVisibilityLogAt >= 15000L) {
+                lastVisibilitySignature = signature
+                lastVisibilityLogAt = now
+                InternalDiagnosticsLogger.logInteraction(this, "WINDOW_VISIBILITY",
+                    "eventPkg=$eventPackage activePkg=${activePackage ?: "UNKNOWN"} " +
+                    "visibility=$visibility eventWindowType=$type " +
+                    "windowActive=${eventWindow?.isActive ?: "UNKNOWN"} " +
+                    "windowFocused=${eventWindow?.isFocused ?: "UNKNOWN"} " +
+                    "accessibleTargetWindows=${targetWindows.size} androidAutoDisplay=UNKNOWN " +
+                    "inspectionMs=${android.os.SystemClock.elapsedRealtime() - started}")
+            }
+        } catch (e: Exception) {
+            InternalDiagnosticsLogger.logInteraction(this, "WINDOW_VISIBILITY_ERROR",
+                "Window metadata unavailable: ${e.javaClass.simpleName}")
+        }
+    }
+
     private var lastOfferSignature: String = ""
     private var lastOfferTimestamp: Long = 0L
 
     companion object {
+        const val ACTION_TEST_ALERT_PILL = "com.driverade.action.TEST_ALERT_PILL"
         private const val TAG = "OptimizedOfferEngine"
         private const val OVERLAY_DURATION_MS = 9000L
 
@@ -53,6 +126,16 @@ class OptimizedOfferEngine : AccessibilityService() {
         super.onServiceConnected()
         prefs = DriverPreferences(this)
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        guidance = GuideHighlighter(this)
+        visualDebug = VisualDebugCapture(this)
+        val filter = IntentFilter(ACTION_TEST_ALERT_PILL)
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(testPillReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(testPillReceiver, filter)
+        }
+        testReceiverRegistered = true
         InternalDiagnosticsLogger.initializeSession(this, prefs)
         InternalDiagnosticsLogger.logInteraction(this, "SERVICE", "OptimizedOfferEngine connected successfully.")
     }
@@ -60,8 +143,28 @@ class OptimizedOfferEngine : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
         val pkgName = event.packageName?.toString() ?: "unknown.package"
+        val captureId = "${System.currentTimeMillis()}-${++diagnosticCaptureSequence}"
+        visualDebug?.observe(event, pkgName)
+        if (GuidedSettingsState.isActive(this) && (pkgName == "com.android.settings" || pkgName == "com.google.android.projection.gearhead")) {
+            val guide = GuidedSettingsState.guide(this)
+            val step = GuidedSettingsState.step(this)
+            val trace = "$guide:$step:$pkgName:${event.eventType}:${event.windowId}"
+            val traceAt = android.os.SystemClock.elapsedRealtime()
+            if (trace != lastGuideTrace || traceAt - lastGuideTraceAt >= 3000L) {
+                lastGuideTrace = trace
+                lastGuideTraceAt = traceAt
+                InternalDiagnosticsLogger.logInteraction(this, "GUIDE_TRACE",
+                    "guide=$guide step=$step package=$pkgName eventType=${event.eventType} windowId=${event.windowId}")
+            }
+            val seen = guidance?.inspect(rootInActiveWindow, guide, step) == true
+            GuidedSettingsState.setTargetSeen(this, seen)
+            return
+        }
+        guidance?.clear()
 
         InternalDiagnosticsLogger.logInteraction(this, "EVENT_INGEST", "Received accessibility event from package: $pkgName (Type: ${event.eventType})")
+
+        if (resolvePlatform(pkgName) != null) logWindowVisibility(event, pkgName)
 
         val platform = resolvePlatform(pkgName)
         if (platform == null) {
@@ -74,7 +177,7 @@ class OptimizedOfferEngine : AccessibilityService() {
             return
         }
 
-        InternalDiagnosticsLogger.logInteraction(this, "PLATFORM_MATCH", "Matched active platform: $platform")
+        InternalDiagnosticsLogger.logInteraction(this, "PLATFORM_MATCH", "capture=$captureId platform=$platform eventType=${event.eventType} eventTime=${event.eventTime} windowId=${event.windowId} class=${event.className}")
 
         val collectedNodes = LinkedHashSet<String>()
 
@@ -83,14 +186,17 @@ class OptimizedOfferEngine : AccessibilityService() {
         }
 
         rootInActiveWindow?.let { root ->
-            traverseNodeTree(root, collectedNodes, 0)
+            val rootPkg = root.packageName?.toString()
+            if ((platform != "UBER" && platform != "UBER_EATS") || rootPkg == pkgName) {
+                traverseNodeTree(root, collectedNodes, 0)
+            }
         }
 
         try {
             windows?.forEach { windowInfo ->
                 windowInfo.root?.let { winRoot ->
                     val winPkg = winRoot.packageName?.toString() ?: pkgName
-                    if (resolvePlatform(winPkg) != null) {
+                    if (if (platform == "UBER" || platform == "UBER_EATS") winPkg == pkgName else resolvePlatform(winPkg) != null) {
                         traverseNodeTree(winRoot, collectedNodes, 0)
                     }
                 }
@@ -99,7 +205,7 @@ class OptimizedOfferEngine : AccessibilityService() {
             InternalDiagnosticsLogger.logInteraction(this, "WARN", "Multi-window inspection warning: ${e.message}")
         }
 
-        InternalDiagnosticsLogger.logInteraction(this, "NODE_SCRAPE", "Collected ${collectedNodes.size} unique nodes from window hierarchy.")
+        InternalDiagnosticsLogger.logInteraction(this, "NODE_SCRAPE", "capture=$captureId nodes=${collectedNodes.size} boundedText=${collectedNodes.take(30).map { it.take(80) }}")
 
         if (collectedNodes.isEmpty()) {
             InternalDiagnosticsLogger.logInteraction(this, "PARSE_ABORT", "No text nodes found to evaluate.")
@@ -108,24 +214,54 @@ class OptimizedOfferEngine : AccessibilityService() {
 
         val rawList = collectedNodes.toList()
         val joinedTextLower = rawList.joinToString(" ").lowercase(Locale.US)
-        val hasValidKeyword = OFFER_KEYWORDS.any { joinedTextLower.contains(it) }
+        val hasValidKeyword = OFFER_KEYWORDS.any { joinedTextLower.contains(it) } ||
+            joinedTextLower.contains("tip") || joinedTextLower.contains("earnings")
 
-        if (!hasValidKeyword) {
+        if (!hasValidKeyword && platform != "UBER" && platform != "UBER_EATS") {
             InternalDiagnosticsLogger.logInteraction(this, "KEYWORD_DROP", "Ignored: Missing mandatory offer validation keywords.")
             return
         }
 
-        val evaluation = parseOfferNodes(platform, pkgName, rawList)
-        
-        if (evaluation == null) {
-            InternalDiagnosticsLogger.logInteraction(this, "PARSE_FAIL", "Nodes scraped but regex rejected. Sample nodes: ${rawList.take(5)}")
+        // Observe explicitly labelled tip amounts on history screens, independently of offers.
+        TipLedger.observe(this, platform, rawList)
+        if (platform != "UBER" && platform != "UBER_EATS" && !OfferScreenClassifier.isActiveOffer(rawList)) {
+            InternalDiagnosticsLogger.logInteraction(this, "OFFER_GATE_DROP", "Offer screen rejected: ${OfferScreenClassifier.rejectionReason(rawList)}")
             return
         }
 
+        if (platform == "UBER" || platform == "UBER_EATS") {
+            val payoutPresent = rawList.any { PAYOUT_REGEX.containsMatchIn(it) }
+            val durationPresent = HOURS_MINUTES_REGEX.containsMatchIn(rawList.joinToString(" ")) ||
+                rawList.any { MINUTES_REGEX.containsMatchIn(it) }
+            val distancePresent = rawList.any { MILES_REGEX.containsMatchIn(it) }
+            InternalDiagnosticsLogger.logInteraction(this, "UBER_CANDIDATE",
+                "nodes=${rawList.size} keyword=$hasValidKeyword payout=$payoutPresent " +
+                    "duration=$durationPresent distance=$distancePresent; raw text withheld")
+        }
+
+        // Map pills, earnings and pickup navigation are not incoming offers.
+        // Keep candidate telemetry, but only actionable offer screens can alert.
+        if ((platform == "UBER" || platform == "UBER_EATS") &&
+            !OfferScreenClassifier.isActiveOffer(rawList)) {
+            InternalDiagnosticsLogger.logInteraction(this, "UBER_OFFER_GATE_DROP",
+                "reason=${OfferScreenClassifier.rejectionReason(rawList)} " +
+                    "windowId=${event.windowId} nodes=${rawList.size}; text withheld")
+            return
+        }
+
+        InternalDiagnosticsLogger.logInteraction(this, "PARSE_INPUT", "capture=$captureId payoutCandidates=${rawList.flatMap { PAYOUT_REGEX.findAll(it).map { m -> m.value }.toList() }.take(15)} durationCandidates=${MINUTES_REGEX.findAll(joinedTextLower).map { it.value }.take(15).toList()} distanceCandidates=${MILES_REGEX.findAll(joinedTextLower).map { it.value }.take(15).toList()}")
+        val evaluation = parseOfferNodes(platform, pkgName, rawList)
+        
+        if (evaluation == null) {
+            InternalDiagnosticsLogger.logInteraction(this, "PARSE_FAIL", "Offer fields invalid or missing; text content withheld for privacy")
+            return
+        }
+
+        InternalDiagnosticsLogger.logInteraction(this, "PARSE_RESULT", "capture=$captureId payout=${evaluation.payout} minutes=${evaluation.totalMinutes} miles=${evaluation.totalMiles} hourly=${evaluation.hourlyRate} target=${evaluation.meetsTarget}")
         val signature = "${evaluation.platform}_${evaluation.payout}_${evaluation.totalMinutes}_${evaluation.totalMiles}"
         val now = System.currentTimeMillis()
-        if (signature == lastOfferSignature && (now - lastOfferTimestamp) < 4000L) {
-            InternalDiagnosticsLogger.logInteraction(this, "DEBOUNCE", "Duplicate offer suppressed within 4s window.")
+        if (signature == lastOfferSignature && (now - lastOfferTimestamp) < 45000L) {
+            InternalDiagnosticsLogger.logInteraction(this, "DEBOUNCE", "capture=$captureId suppressed=true elapsedMs=${now-lastOfferTimestamp}")
             return
         }
         lastOfferSignature = signature
@@ -133,9 +269,18 @@ class OptimizedOfferEngine : AccessibilityService() {
 
         InternalDiagnosticsLogger.logInteraction(this, "SUCCESS", "Offer evaluated: Payout=$${evaluation.payout}, Hourly=$${evaluation.hourlyRate}/hr, TargetMet=${evaluation.meetsTarget}")
 
+        // Recognition continues for local telemetry, but output channels are independent.
         DriveradeState.recordOffer(evaluation)
-        broadcastToAndroidAuto(evaluation)
-        showHourlyRateOverlay(evaluation)
+        prefs.todayOffersCount += 1
+        if (evaluation.meetsTarget) prefs.todayGoodOffersCount += 1
+        if (prefs.loggerEnabled) LoggerService.recordOfferDiagnostic(this, prefs, evaluation)
+        if (prefs.alerterEnabled) {
+            InternalDiagnosticsLogger.logInteraction(this, "ALERT_DISPATCH", "capture=$captureId live offer alert requested for $platform")
+            broadcastToAndroidAuto(evaluation)
+            showHourlyRateOverlay(evaluation)
+        } else {
+            InternalDiagnosticsLogger.logInteraction(this, "ALERT_DISABLED", "Live offer evaluated but alerter is disabled")
+        }
     }
 
     private fun resolvePlatform(packageName: String): String? {
@@ -221,7 +366,8 @@ class OptimizedOfferEngine : AccessibilityService() {
 
         if (payout <= 0.0) return null
 
-        val effectiveMinutes = if (totalMinutes > 0.0) totalMinutes else 15.0
+        if (totalMinutes <= 0.0 || totalMiles <= 0.0) return null
+        val effectiveMinutes = totalMinutes
         val hourlyRate = (payout / effectiveMinutes) * 60.0
         val dollarsPerMile = if (totalMiles > 0.0) payout / totalMiles else 0.0
 
@@ -342,11 +488,17 @@ class OptimizedOfferEngine : AccessibilityService() {
     }
 
     override fun onInterrupt() {
+        guidance?.clear()
         dismissOverlay()
         InternalDiagnosticsLogger.logInteraction(this, "SERVICE", "OptimizedOfferEngine interrupted.")
     }
 
     override fun onDestroy() {
+        if (testReceiverRegistered) {
+            unregisterReceiver(testPillReceiver)
+            testReceiverRegistered = false
+        }
+        guidance?.clear()
         dismissOverlay()
         InternalDiagnosticsLogger.logInteraction(this, "SERVICE", "OptimizedOfferEngine destroyed.")
         super.onDestroy()
