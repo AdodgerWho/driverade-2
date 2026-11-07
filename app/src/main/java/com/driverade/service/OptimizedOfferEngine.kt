@@ -52,6 +52,13 @@ class OptimizedOfferEngine : AccessibilityService() {
                     evaluation == null -> "PARSE_FAIL"
                     else -> "PASS"
                 }
+                val fieldDiagnostic = if (platform == "UBER" || platform == "UBER_EATS") {
+                    UberOfferFieldResolver.resolve(nodes.map { UberOfferFieldResolver.Node(it) }).also {
+                        InternalDiagnosticsLogger.logInteraction(this@OptimizedOfferEngine,
+                            "UBER_FIELD_PROVENANCE", "source=SYNTHETIC " + it.diagnostic())
+                    }.let { "\nUber offer field binding: " + it.source +
+                        " | payout=" + (it.payout ?: "NA") + "\n" }
+                } else ""
                 val report = OfferParserComparison.compare(platform, nodes, accepted, evaluation?.let {
                     OfferParserComparison.ActiveSnapshot(it.payout, it.totalMinutes, it.totalMiles, it.hourlyRate)
                 })
@@ -63,7 +70,7 @@ class OptimizedOfferEngine : AccessibilityService() {
                 InternalDiagnosticsLogger.logInteraction(this@OptimizedOfferEngine, "PARSER_COMPARISON",
                     report.diagnostic("SYNTHETIC", requestId, reason))
                 sendSyntheticResult(requestId,
-                    "Active path: $status | gate: $reason\n\n" + report.display())
+                    "Active path: $status | gate: $reason\n\n" + report.display() + fieldDiagnostic)
                 return
             }
             if (intent?.action != ACTION_TEST_ALERT_PILL) return
