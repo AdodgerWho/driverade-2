@@ -254,12 +254,18 @@ class OptimizedOfferEngine : AccessibilityService() {
             return
         }
 
-        val rawList = collectedNodes.toList()
-        if (platform == "UBER" || platform == "UBER_EATS") {
-            val resolved = UberOfferFieldResolver.resolve(fieldNodes)
-            InternalDiagnosticsLogger.logInteraction(this, "UBER_FIELD_PROVENANCE",
-                "capture=$captureId " + resolved.diagnostic())
-        }
+        val resolvedUber = if (platform == "UBER" || platform == "UBER_EATS") {
+            UberOfferFieldResolver.resolve(fieldNodes).also { resolved ->
+                InternalDiagnosticsLogger.logInteraction(this, "UBER_FIELD_PROVENANCE",
+                    "capture=$captureId " + resolved.diagnostic())
+            }
+        } else null
+        // A verified payout is tied to a single offer window. Avoid unrelated
+        // windows in its calculation; preserve original behavior otherwise.
+        val rawList = if (resolvedUber?.payout != null && resolvedUber.windowId != null) {
+            fieldNodes.asSequence().filter { it.visible && it.windowId == resolvedUber.windowId }
+                .map { it.text }.distinct().toList()
+        } else collectedNodes.toList()
         val joinedTextLower = rawList.joinToString(" ").lowercase(Locale.US)
         val hasValidKeyword = OFFER_KEYWORDS.any { joinedTextLower.contains(it) } ||
             joinedTextLower.contains("tip") || joinedTextLower.contains("earnings")
@@ -297,7 +303,7 @@ class OptimizedOfferEngine : AccessibilityService() {
         }
 
         InternalDiagnosticsLogger.logInteraction(this, "PARSE_INPUT", "capture=$captureId payoutCandidates=${rawList.flatMap { PAYOUT_REGEX.findAll(it).map { m -> m.value }.toList() }.take(15)} durationCandidates=${MINUTES_REGEX.findAll(joinedTextLower).map { it.value }.take(15).toList()} distanceCandidates=${MILES_REGEX.findAll(joinedTextLower).map { it.value }.take(15).toList()}")
-        val evaluation = parseOfferNodes(platform, pkgName, rawList)
+        val evaluation = parseOfferNodes(platform, pkgName, rawList, resolvedUber?.payout)
         // Shadow comparison reads the same gated live nodes. Its output is diagnostic only.
         // Do not alter the existing parse result, alerts, dedupe or offer statistics.
         if (platform == "UBER" || platform == "LYFT") {
@@ -407,7 +413,8 @@ class OptimizedOfferEngine : AccessibilityService() {
     fun parseOfferNodes(
         platform: String,
         packageName: String,
-        texts: List<String>
+        texts: List<String>,
+        verifiedPayout: Double? = null
     ): OfferEvaluation? {
         var payout = -1.0
         var totalMinutes = 0.0
@@ -449,6 +456,9 @@ class OptimizedOfferEngine : AccessibilityService() {
             }
         }
 
+        if (verifiedPayout != null && (platform == "UBER" || platform == "UBER_EATS")) {
+            payout = verifiedPayout
+        }
         if (payout <= 0.0) return null
 
         if (totalMinutes <= 0.0 || totalMiles <= 0.0) return null
