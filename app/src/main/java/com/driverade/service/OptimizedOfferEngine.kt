@@ -250,6 +250,14 @@ class OptimizedOfferEngine : AccessibilityService() {
         InternalDiagnosticsLogger.logRoutine(this, "EVENT_INGEST", "package=$pkgName type=${event.eventType}")
 
         if (resolvePlatform(pkgName) != null) logWindowVisibility(event, pkgName)
+        if (pkgName == "com.ubercab.driver" && DeveloperInspection.isActive(this)) {
+            try {
+                DeveloperInspection.observe(this, event, windows.orEmpty(), rootInActiveWindow)
+            } catch (e: Exception) {
+                InternalDiagnosticsLogger.logInteraction(this, "DEV_INSPECTION_ERROR",
+                    "capture=$captureId reason=${e.javaClass.simpleName}")
+            }
+        }
 
         val platform = resolvePlatform(pkgName)
         if (platform == null) {
