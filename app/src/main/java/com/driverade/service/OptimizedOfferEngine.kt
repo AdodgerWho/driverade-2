@@ -195,7 +195,9 @@ class OptimizedOfferEngine : AccessibilityService() {
             "com.ubercab.driver" to "UBER",
             "com.ubercab.eats" to "UBER_EATS",
             "me.lyft.driver" to "LYFT",
+            "com.lyft.android.driver" to "LYFT", // confirmed historical Driverlogger captures
             "com.hich.driver" to "HICH",
+            "us.mi.hich.driver" to "HICH", // confirmed historical Driverlogger captures
             "com.doordash.driverapp" to "DOORDASH",
             "com.grubhub.driver" to "GRUBHUB"
         )
