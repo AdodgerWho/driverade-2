@@ -40,7 +40,8 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
             return
         }
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-            event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return
+            event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
+            event.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED) return
         val target = OptimizedOfferEngine.PACKAGE_PLATFORM_MAP.containsKey(pkg) ||
             (GuidedSettingsState.isActive(service) &&
                 (pkg == "com.android.settings" || pkg == "com.google.android.projection.gearhead"))
