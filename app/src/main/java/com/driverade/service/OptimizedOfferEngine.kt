@@ -56,6 +56,7 @@ class OptimizedOfferEngine : AccessibilityService() {
                 val evaluation = parsed.offer?.let { evaluationOf(it, "synthetic.test") }
                 val status = when {
                     !accepted && (reason.startsWith("missing_") ||
+                        reason.startsWith("ocr_") ||
                         reason == "history_or_navigation" ||
                         reason == "unsupported_platform" ||
                         reason == "requires_two_pickup_and_trip_legs") -> "GATE_REJECT"
