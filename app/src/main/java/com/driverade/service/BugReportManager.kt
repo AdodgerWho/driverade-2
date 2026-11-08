@@ -75,10 +75,11 @@ object BugReportManager {
                     "No screenshots expected: screenshot saving is OFF. Use Export Logs for text diagnostics.",
                     Toast.LENGTH_LONG).show()
             } else {
-                InternalDiagnosticsLogger.logInteraction(context, "VISUAL_DEBUG_EXPORT_FAILED",
-                    "reason=NO_PNG_WITH_SAVING_ENABLED; capture pipeline requires investigation")
+                InternalDiagnosticsLogger.logInteraction(context, "VISUAL_DEBUG_EXPORT_SKIPPED",
+                    "reason=NO_SELECTED_ROLLING_FRAMES captureTriggersPending=true " +
+                        "check=ROLLING_STAGED_OR_ROLLING_TRIGGER")
                 Toast.makeText(context,
-                    "No screenshots saved. Check visual debug capture diagnostics.",
+                    "No selected screenshots yet. Rolling capture saves frames around an offer or visual change.",
                     Toast.LENGTH_LONG).show()
             }
             return false
