@@ -85,3 +85,19 @@ The update reuses the existing standardized `RestoredOfferParser.Candidate` (pay
 - The reference screenshot in the private `Driverade / Uber Parser Reference Screenshots` Drive folder shows a **Comfort Electric reservation preview** with `View trip` but no actionable offer; it is a negative evidence case. Private images, raw text and rider information are not copied into GitHub.
 
 **Next device checks:** Verify the new build SHA, signing certificate and versionCode (automatic PR CI is still debug-signed; permanent signing requires separately authorized workflow_dispatch). Run all 17 synthetic fixtures. With visual-debug explicitly opted in, capture a real offer and correlate window area / source, `VISUAL_DEBUG_OCR_COMPLETED`, `UBER_OCR_DIAGNOSTIC`, `RESTORED_OCR_PARSE`, `PARSE_RESULT`, and `ALERT_DISPATCH` by capture ID. Compare payout and both leg metrics to actual screenshot; ensure no duplicate alert or false positives. Inspect the private PNG bundle only in a restricted workspace.
+
+
+## November 8 — installed update evidence and next iteration gate
+
+The owner installed the permanently signed PR #37 test build as an **in-place update** over versionCode 10236. Current test build: version 3.64, versionCode **10257**, Actions run **42526682710**, build SHA **64c196672fc321e2964ddd5d65ee9e3559a04641**. Android reported "App updated"; Home, Insights, and Settings opened, with Accessibility and Overlay shown enabled. This supports update compatibility and basic UI smoke testing, not offer parsing correctness.
+
+**Cumulative diagnostic caution:** The provided text logs include events from the older 10236 installation. Always segment at `[BUILD_ID]`; older `RESTORED_*` or synthetic summaries are not evidence for 10257. In the new 10257 segment, `RESTORED_DIAGNOSTIC_READY` reported `EVENT_TREE,TIMED_TREE,UBER_WINDOW_OR_DISPLAY_OCR`, `pngOptIn=false`, `privateInspection=false`; the engine connected and feature checks ran. No new-build live `PARSE_RESULT`, `RESTORED_OCR_PARSE`, or `ALERT_DISPATCH` was observed in that short segment. This is **BLOCKED / NOT YET OBSERVED**, not a demonstrated failure. The older 12/12 synthetic batch does **not** satisfy the current 17-fixture requirement.
+
+**Next controlled iteration (do not merge):**
+1. On installed 10257, run the full **17-fixture** injector; record expected and observed payout, legs, service and rejection reasons, with no synthetic effects on real stats/alerts.
+2. During one real actionable Uber offer, collect capture-ID-linked acquisition, OCR/tree result, `PARSE_RESULT`, gate decision and alert dispatch. Compare with the visual offer, including Comfort/Electric variants. Capture false-positive map pill/history negatives.
+3. With explicit Visual Debug Capture consent, validate retained PNG/ZIP and pre/post rolling sequence; preserve privacy and test OFF separately.
+4. Diagnose only the first confirmed failing node, implement a narrow fix with regression fixtures and reason-coded diagnostics, rebuild and repeat. Do not change working downstream logic without evidence.
+5. Before any merge, check CI, Semgrep, current-main divergence, signing continuity and remaining live acceptance criteria.
+
+**Deferred earnings reconciliation:** See [EARNINGS_HISTORY_RECONCILIATION_NOTES.md](EARNINGS_HISTORY_RECONCILIATION_NOTES.md) and [DRIVERADE_NEXT_ITERATION_ROADMAP.md](DRIVERADE_NEXT_ITERATION_ROADMAP.md). The dashboard's observed potential-tip count is not an accuracy pass: running-total changes can include unmatched completed-trip earnings. Validate tip attribution only after completed-trip payout linkage and labeled history parsing. Do not infer tips from offer-to-final payout differences.
