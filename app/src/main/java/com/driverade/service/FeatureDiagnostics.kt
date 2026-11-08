@@ -106,6 +106,11 @@ object FeatureDiagnostics {
         checks += Check("Live restored OCR and timed accessibility inspection", "BLOCKED",
             "Requires actual background Uber offer; verify RESTORED_TREE_PARSE, " +
                 "RESTORED_OCR_PARSE and PARSE_RESULT; synthetic tests do not prove capture")
+        checks += Check("Restored three-path diagnostic correlation", "BLOCKED",
+            "New-build device evidence required: RESTORED_DIAGNOSTIC_READY, " +
+                "RESTORED_ACQUISITION (EVENT/TIMED), RESTORED_TREE_PARSE or MISS, " +
+                "VISUAL_DEBUG_OCR_REQUESTED/COMPLETED, RESTORED_OCR_PARSE or SKIPPED; " +
+                "match capture IDs. Synthetic parser success cannot verify live capture")
         checks += Check("Synthetic result delivery to dashboard", "BLOCKED",
             "Run the injector; require a comparison dialog and PARSER_COMPARISON export record")
         checks += check("Tip ledger read") {
@@ -141,6 +146,11 @@ object FeatureDiagnostics {
                 }
             }.getOrDefault(false)
         }
+        checks += Check("PNG persistence vs transient OCR", "BLOCKED",
+            "pngOptIn=$visualEnabled retainedPng=${screenshotFiles.size}; " +
+                "retained files may predate the current toggle. With PNG opt-in OFF, " +
+                "Uber OCR still operates transiently; expect VISUAL_DEBUG_PNG_SKIPPED " +
+                "and VISUAL_DEBUG_OCR_COMPLETED, and no new VISUAL_DEBUG_FILE_VERIFIED")
         checks += Check("Screenshot capture file verification",
             if (validScreenshots > 0) "PASS" else if (visualEnabled) "FAIL" else "BLOCKED",
             "optIn=$visualEnabled savedPng=${screenshotFiles.size} verifiedPng=$validScreenshots; " +
