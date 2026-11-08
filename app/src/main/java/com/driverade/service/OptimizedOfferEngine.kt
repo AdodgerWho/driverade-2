@@ -538,7 +538,7 @@ class OptimizedOfferEngine : AccessibilityService() {
         return hasRecycler && !hasText
     }
 
-    private fun handleRestoredOcr(captureId: String, ocr: String) {
+    private fun handleRestoredOcr(captureId: String, ocr: String, captureSource: String) {
         if (!::prefs.isInitialized) {
             InternalDiagnosticsLogger.logInteraction(this, "RESTORED_OCR_SKIPPED",
                 "capture=" + captureId + " reason=PREFERENCES_NOT_READY")
@@ -554,7 +554,7 @@ class OptimizedOfferEngine : AccessibilityService() {
                 "capture=" + captureId + " reason=EVENT_OLDER_THAN_8_SECONDS")
             return
         }
-        val parsed = RestoredOfferParser.fromUberOcr(ocr)
+        val parsed = RestoredOfferParser.fromUberOcr(ocr, captureSource)
         // Record every OCR decision so each completed image has a matching parser outcome.
         InternalDiagnosticsLogger.logInteraction(this, "RESTORED_OCR_PARSE",
             "capture=" + captureId + " " + parsed.diagnostic())
