@@ -165,7 +165,7 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
         }
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         log("OCR_REQUESTED", "capture=" + captureId +
-            " provider=ML_KIT rawText=TRANSIENT savedToPng=false")
+            " provider=ML_KIT rawText=TRANSIENT rawOcrTextPersisted=false")
         try {
             recognizer.process(InputImage.fromBitmap(copy, 0))
                 .addOnSuccessListener { result ->
