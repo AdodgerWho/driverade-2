@@ -75,6 +75,13 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
     fun hasActivePostroll(): Boolean =
         isEnabled() && rolling.postRollActive(SystemClock.elapsedRealtime())
 
+    fun expireRollingFrames() {
+        val count = rolling.expire(SystemClock.elapsedRealtime())
+        if (count > 0)
+            log("ROLLING_EXPIRED", "frames=" + count +
+                " reason=AGED_OUT_WITHOUT_CAPTURE rawText=OMITTED")
+    }
+
     /** Called by the authoritative tree parser once it recognizes an actual offer. */
     fun onOfferRecognized(captureId: String) {
         signalRollingTrigger(captureId, "VERIFIED_TREE_OFFER")
