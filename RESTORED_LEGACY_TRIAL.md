@@ -68,3 +68,20 @@ Instrumentation added directly to this PR's existing branch (without changing pa
 - With PNG saving on deliberately, expect `VISUAL_DEBUG_FILE_VERIFIED` and a readable opt-in ZIP with the reported count. Do not confuse `CAPTURE_SUCCESS` (a transient bitmap) with `FILE_VERIFIED` (persisted PNG).
 - Distinguish the private inspector's every-few-seconds throttle from normal event parsing. If no matching private JSONL entry exists, that does not imply the regular event path failed.
 - Treat feature-check `BLOCKED` as an unperformed live test rather than a failure or certification; synthetic batch tests are separate.
+
+
+## November 8 — Uber service-neutral OCR correction (PR #37)
+
+**Status: implementation on experimental branch; verify CI and on-device results before merging to main.**
+The installed permanently signed build (3.64, code 10236) showed successful Uber event acquisition and local ML Kit OCR, but 56 OCR frames were all rejected at the old `ocr_no_uberx_card_label` gate. The owner drives primarily Comfort, Electric and Comfort Electric. Private hierarchy observations showed the subsequent pickup/waiting state; a usable screenshot of the approximately $20 actionable offer was not retained. Do not claim this proves acquisition of the offer frame.
+
+The update reuses the existing standardized `RestoredOfferParser.Candidate` (payout, pickup minutes/miles, trip minutes/miles, combined minutes/miles, hourly rate) and the already connected `OfferEvaluation` output. It does not introduce a competing offer-output path or change Lyft/Hich behavior.
+
+- OCR may recognize multiple Uber service labels. A verified Uber-owned window screenshot can also parse a future/unknown service, but **only** with an explicit offer action, unambiguous payout, exactly two complete minute/mile legs, and rejection of history/navigation content.
+- A display screenshot may contain another foreground app: it requires a recognized service label, plus the existing recent-Uber-event requirement, before those same strict parsing gates run. This is a conservative fallback rather than a blanket label-free display parser.
+- Screenshot selection prefers meaningful Uber-owned window area over a small event overlay when both are present. It does not bypass screenshot access errors or secure-window restrictions.
+- `UBER_OCR_DIAGNOSTIC` logs a canonical service type, action presence and capped candidate counts even if the card is rejected, keeping raw OCR text omitted and existing opt-in PNG behavior unchanged. Diagnostic-only detection is never an offer publisher.
+- The on-device synthetic catalog now contains **17** fixtures (original 12 preserved, 5 added), including Comfort, Electric, Comfort Electric, a nonactionable reservation preview and an unknown-service display rejection. Extra JVM tests cover unknown-service window provenance, payout ambiguity, window selection, and negative cases.
+- The reference screenshot in the private `Driverade / Uber Parser Reference Screenshots` Drive folder shows a **Comfort Electric reservation preview** with `View trip` but no actionable offer; it is a negative evidence case. Private images, raw text and rider information are not copied into GitHub.
+
+**Next device checks:** Verify the new build SHA, signing certificate and versionCode (automatic PR CI is still debug-signed; permanent signing requires separately authorized workflow_dispatch). Run all 17 synthetic fixtures. With visual-debug explicitly opted in, capture a real offer and correlate window area / source, `VISUAL_DEBUG_OCR_COMPLETED`, `UBER_OCR_DIAGNOSTIC`, `RESTORED_OCR_PARSE`, `PARSE_RESULT`, and `ALERT_DISPATCH` by capture ID. Compare payout and both leg metrics to actual screenshot; ensure no duplicate alert or false positives. Inspect the private PNG bundle only in a restricted workspace.
