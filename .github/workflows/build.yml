@@ -73,32 +73,69 @@ jobs:
             -alias "$DRIVERADE_KEY_ALIAS" >/dev/null
           gradle assembleDebug
 
-      - name: Prepare APK artifact
+      # Build #236 / versionCode 10236 is the established in-place-update identity.
+      # This public certificate fingerprint was independently checked against its APK.
+      # Never rotate the permanent signer or reuse a lower version code by accident.
+      - name: Verify APK identity and prepare distinctly named artifact
         shell: bash
+        env:
+          PERMANENT_SIGNING_REQUESTED: ${{ github.event_name == 'workflow_dispatch' && inputs.sign_for_updates }}
+          DRIVER_CERT_SHA256: a825f5a6602891307f4fefa1b255e795c50e30a9f3e80aefb3d5daf7e5249b16
         run: |
           set -euo pipefail
           apk="app/build/outputs/apk/debug/app-debug.apk"
           test -s "$apk"
-          cp "$apk" "app/build/outputs/apk/debug/Driverade.apk"
           sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
           if [[ -z "$sdk_root" ]]; then
             echo "::error::Android SDK path is not available"
             exit 1
           fi
           apksigner="$(find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 -name apksigner -type f | sort -V | tail -n 1)"
+          aapt="$(find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 -name aapt -type f | sort -V | tail -n 1)"
           test -x "$apksigner"
-          "$apksigner" verify --verbose --print-certs "$apk"
+          test -x "$aapt"
+          verify_output="$("$apksigner" verify --verbose --print-certs "$apk")"
+          printf '%s\n' "$verify_output"
+          signer_sha="$(printf '%s\n' "$verify_output" | awk '/certificate SHA-256 digest:/ {print tolower($NF); exit}')"
+          if [[ -z "$signer_sha" ]]; then
+            echo "::error::Could not read APK signing certificate digest"
+            exit 1
+          fi
+          package_line="$("$aapt" dump badging "$apk" | grep -m1 '^package:')"
+          if [[ "$package_line" != *"name='com.driverade'"* ||
+                "$package_line" != *"versionCode='${DRIVERADE_VERSION_CODE}'"* ]]; then
+            echo "::error::Unexpected Android package or versionCode in APK"
+            exit 1
+          fi
+          if [[ "$PERMANENT_SIGNING_REQUESTED" == "true" ]]; then
+            if [[ "$signer_sha" != "$DRIVER_CERT_SHA256" ]]; then
+              echo "::error::Permanent update signing certificate does not match installed build #236. Refusing artifact."
+              exit 1
+            fi
+            if (( DRIVERADE_VERSION_CODE <= 10236 )); then
+              echo "::error::Permanent update versionCode must exceed baseline installed version 10236"
+              exit 1
+            fi
+            filename="Driverade-UPDATE-${DRIVERADE_VERSION_CODE}.apk"
+            echo "Verified permanent update: package=com.driverade versionCode=${DRIVERADE_VERSION_CODE} signer=$signer_sha"
+          else
+            filename="Driverade-CI-DEBUG-${DRIVERADE_VERSION_CODE}.apk"
+            echo "CI debug build only: do not install over a permanent-signed Driverade"
+          fi
+          cp "$apk" "app/build/outputs/apk/debug/$filename"
 
       - name: Upload CI test APK (not an in-place update)
         if: github.event_name != 'workflow_dispatch' || !inputs.sign_for_updates
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: Driverade-CI-DEBUG-NOT-FOR-UPDATES
-          path: app/build/outputs/apk/debug/Driverade.apk
+          path: app/build/outputs/apk/debug/Driverade-CI-DEBUG-*.apk
+          if-no-files-found: error
 
       - name: Upload permanent-signed update APK
         if: github.event_name == 'workflow_dispatch' && inputs.sign_for_updates
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: Driverade-PERMANENT-SIGNED-UPDATE
-          path: app/build/outputs/apk/debug/Driverade.apk
+          path: app/build/outputs/apk/debug/Driverade-UPDATE-*.apk
+          if-no-files-found: error
