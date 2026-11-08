@@ -34,7 +34,8 @@ The restored parser is authoritative for Uber/Lyft/Hich offer decisions. Existin
 ## Important limits
 - The old image first-dollar assumption is intentionally discarded; two distinct leg pairs are mandatory, not guessed.
 - Raw OCR is transient; raw accessibility trace persistence requires user-enabled Developer Inspection.
-- Legacy screenshot pre-roll/post-roll buffering is NOT yet ported. The separate existing opt-in exporter currently retains at most 100 PNGs.
+- **Historical pre-roll/post-roll screenshot buffering was a developer OCR/parser test aid**, used to find the exact frame of a fleeting offer and compare it to recognized text and parsed fields. It is not a required live-parser acquisition tier or a release/merge gate. It has not been ported; current opt-in visual-debug export retains up to 100 PNGs.
+- If frame selection remains difficult during an opt-in development trial, restore a short, bounded pre/post capture buffer under Developer Diagnostics only. Correlate candidate frames, OCR output and parser decisions with capture IDs; retain images only with explicit user consent, and keep it off in normal operation.
 - Synthetic text OCR fixtures do not establish real screenshot recognition; the next live Uber offer is required.
 
 
