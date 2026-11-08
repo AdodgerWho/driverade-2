@@ -46,13 +46,15 @@ object FeatureDiagnostics {
                 OptimizedOfferEngine.PACKAGE_PLATFORM_MAP["com.ubercab.driver"] == "UBER") to
                 "Known Uber/Lyft package mappings"
         }
-        checks += check("Offer gate rejects earnings history") {
-            (!OfferScreenClassifier.isActiveOffer(listOf("Your earnings", "$101.83", "Trip", "Accept", "20 min", "4 mi"))) to
-                "Historical balance must not trigger an offer"
+        checks += check("Restored live gate rejects earnings history") {
+            (RestoredOfferParser.fromTree("UBER", listOf("Your earnings", "\$101.83",
+                "Trip", "Accept", "10 min • 2 mi", "20 min • 4 mi")).offer == null) to
+                "Historical balance must not trigger an active offer"
         }
-        checks += check("Offer gate accepts actionable sample") {
-            OfferScreenClassifier.isActiveOffer(listOf("Trip request", "Accept", "$18.50", "25 min", "5.2 mi")) to
-                "Synthetic offer classification only; not a live platform test"
+        checks += check("Restored live gate accepts complete actionable sample") {
+            (RestoredOfferParser.fromTree("UBER", listOf("Trip request", "Accept",
+                "\$18.50", "5 min • 1.0 mi", "20 min • 4.2 mi")).offer != null) to
+                "Two-leg synthetic offer classification only; not a live platform test"
         }
         checks += check("Lyft shadow comparison fixture") {
             val nodes = listOf("Ride request", "Accept", "$18.50",
