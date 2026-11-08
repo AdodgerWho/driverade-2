@@ -33,6 +33,51 @@ class RestoredOfferParserTest {
         assertEquals(31.1076, o!!.hourlyRate, 0.01)
     }
 
+
+    @Test fun comfortElectricAndElectricCardsUseStandardizedMetrics() {
+        val cases = listOf(
+            Triple("Comfort\n\$20.80\n5 min • 1.2 mi\n20 min • 7.5 mi\nAccept", 20.8, "COMFORT"),
+            Triple("Electric\n\$18.95\n4 min • 1.0 mi\n14 min • 5.6 mi\nAccept", 18.95, "ELECTRIC"),
+            Triple("Comfort Electric\n\$23.40\n6 min • 1.5 mi\n14 min • 4.0 mi\nMatch", 23.4, "COMFORT_ELECTRIC")
+        )
+        cases.forEach { (card, payout, service) ->
+            val offer = RestoredOfferParser.fromUberOcr(card).offer
+            requireNotNull(offer)
+            assertEquals(payout, offer.payout, 0.001)
+            assertEquals(service, offer.serviceType)
+            assertTrue(offer.totalMinutes > 0)
+            assertTrue(offer.totalMiles > 0)
+        }
+    }
+
+    @Test fun unknownFutureServiceAcceptedOnlyFromTrustedUberWindow() {
+        val raw = "Future tier\n\$21.25\n3 min • 0.8 mi\n12 min • 4.2 mi\nAccept"
+        val r = RestoredOfferParser.fromUberOcr(raw, "WINDOW")
+        expected(r.offer, 21.25, 15.0, 5.0)
+        assertNull(r.offer?.serviceType)
+        assertEquals("ocr_no_service_context", RestoredOfferParser.fromUberOcr(raw, "DISPLAY").reason)
+    }
+
+    @Test fun reservationPreviewAndMapPillDoNotBecomeOffers() {
+        val preview = "Reservation request\nComfort Electric\n\$15.40\nPickup Fri at 6:30pm\nView trip\nDismiss"
+        assertNull(RestoredOfferParser.fromUberOcr(preview, "WINDOW").offer)
+        assertNull(RestoredOfferParser.fromUberOcr(
+            "Comfort Electric\n\$4.36\nPicking up\nStart navigation", "WINDOW").offer)
+    }
+
+    @Test fun largerUnrelatedAmountBeforeCardIsIgnored() {
+        val r = RestoredOfferParser.fromUberOcr(
+            "Other app balance \$73.52\nComfort Electric\n\$20.80\n5 min • 1.2 mi\n20 min • 7.5 mi\nAccept")
+        expected(r.offer, 20.80, 25.0, 8.7)
+    }
+
+    @Test fun ambiguousAmountsWithinOfferRemainRejected() {
+        val r = RestoredOfferParser.fromUberOcr(
+            "Comfort Electric\n\$20.80\n\$28.00\n5 min • 1.2 mi\n20 min • 7.5 mi\nAccept", "WINDOW")
+        assertNull(r.offer)
+        assertEquals("ambiguous_or_missing_payout", r.reason)
+    }
+
     @Test fun historicalUberAcceptPriceBeatsUnrelatedLargerNumber() {
         val o = RestoredOfferParser.fromTree("UBER", listOf(
             "Trip request", "Accept • $12.04", "$13.08",
