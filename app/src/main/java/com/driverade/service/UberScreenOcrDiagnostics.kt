@@ -14,11 +14,14 @@ internal object UberScreenOcrDiagnostics {
         val legMinutes: List<Double>,
         val legMiles: List<Double>
     ) {
-        fun diagnostic(): String =
+        fun diagnostic(captureSource: String = "UNKNOWN"): String =
             "cardLikely=$likelyOfferCard match=$possibleMatch exclusive=$possibleExclusive " +
             "amounts=${amounts.joinToString(",")} " +
             "legMinutes=${legMinutes.joinToString(",")} legMiles=${legMiles.joinToString(",")} " +
-            "source=DISPLAY_OCR status=UNVERIFIED rawText=OMITTED"
+            "source=" + (if (captureSource == "WINDOW") "WINDOW_OCR"
+                else if (captureSource == "DISPLAY" || captureSource == "DISPLAY_FALLBACK")
+                    "DISPLAY_OCR" else "UNKNOWN_OCR") +
+            " status=UNVERIFIED rawText=OMITTED"
     }
     private val money = Regex("""\$\s*(\d{1,3}(?:\.\d{1,2})?)""")
     private val time = Regex("""\b(\d{1,3})\s*min\b""", RegexOption.IGNORE_CASE)
