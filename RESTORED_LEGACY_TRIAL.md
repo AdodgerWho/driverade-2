@@ -36,3 +36,29 @@ The restored parser is authoritative for Uber/Lyft/Hich offer decisions. Existin
 - Raw OCR is transient; raw accessibility trace persistence requires user-enabled Developer Inspection.
 - Legacy screenshot pre-roll/post-roll buffering is NOT yet ported. The separate existing opt-in exporter currently retains at most 100 PNGs.
 - Synthetic text OCR fixtures do not establish real screenshot recognition; the next live Uber offer is required.
+
+
+## November 7 diagnostic baseline and correlation hooks (PR #37)
+
+The user's *installed* diagnostic baseline is from **PR #34**, not this uninstalled PR #37:
+- Build ID `c3cee61a968cd3f2f6d964a9c59987b57f670bb3` (version 3.64); captured 2026-11-07.
+- Explicitly enabled Developer Inspection yielded 8 private Uber hierarchy records, including readable Uber-owned roots in several captures.
+- The exported screenshot ZIP contains **24 PNGs**, and its `VISUAL_DEBUG_EXPORT_PRECHECK` says `enabled=true imageCount=24`. This is evidence that screenshot persistence was opted in at the time, **not** by itself a capture bug.
+- No `RESTORED_*` markers can exist in that baseline, as PR #37 is not installed. Never label it a live test of the restored three-path parser.
+- Private raw JSONL and screenshot ZIP belong only in the user's restricted Drive diagnostics archive; **do not commit or upload them to this public repository**.
+
+Instrumentation added directly to this PR's existing branch (without changing parser acceptance, alerts, OCR semantics or screenshot opt-in):
+1. `RESTORED_DIAGNOSTIC_READY`: active build's diagnostic readiness and persistence-mode state.
+2. `RESTORED_ACQUISITION`: event vs timed acquisition, target window ID, app-owned root count and event-source ownership; `RESTORED_TREE_PARSE/MISS` includes trigger and parser reason.
+3. `RESTORED_TIMED_OCR_TRIGGER`: why a timed image path was requested.
+4. `VISUAL_DEBUG_CAPTURE_SUCCESS`, `VISUAL_DEBUG_PNG_SKIPPED` and `VISUAL_DEBUG_FILE_VERIFIED`: distinguish an in-memory screenshot used for OCR from a PNG deliberately retained on disk. Turning screenshot saving **off** does not delete earlier saved PNGs.
+5. `VISUAL_DEBUG_OCR_REQUESTED/COMPLETED`, `RESTORED_OCR_PARSE/SKIPPED`: correlate local ML Kit OCR completion, listener connection, gate decisions, and stale-event skips; never write raw OCR text to routine diagnostics.
+6. Opt-in `DeveloperInspection` private JSONL now includes the same `captureId` as the ordinary `DEV_INSPECTION_CAPTURE` and `PLATFORM_MATCH` logs. This is available **only in a build containing this change**, not retroactively for the baseline.
+
+### Next device verification on this exact PR build
+- Record the Build ID and ensure the revision is this PR's updated head.
+- With visual-debug PNG persistence **off**, observe an Uber accessibility event. Check the capture ID across `PLATFORM_MATCH`, `RESTORED_ACQUISITION`, `RESTORED_TREE_PARSE/MISS`, `VISUAL_DEBUG_OCR_COMPLETED`, and `RESTORED_OCR_PARSE/SKIPPED`. `VISUAL_DEBUG_PNG_SKIPPED` means no **new** PNG for that image. Existing PNGs may remain from earlier sessions.
+- If an actual offer appears, compare observed offer fields with `PARSE_RESULT` and `ALERT_DISPATCH/ALERT_DISABLED`; verify one alert and no map-pill false positives.
+- With PNG saving on deliberately, expect `VISUAL_DEBUG_FILE_VERIFIED` and a readable opt-in ZIP with the reported count. Do not confuse `CAPTURE_SUCCESS` (a transient bitmap) with `FILE_VERIFIED` (persisted PNG).
+- Distinguish the private inspector's every-few-seconds throttle from normal event parsing. If no matching private JSONL entry exists, that does not imply the regular event path failed.
+- Treat feature-check `BLOCKED` as an unperformed live test rather than a failure or certification; synthetic batch tests are separate.
