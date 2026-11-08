@@ -147,19 +147,20 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
             // Keep only bounded compressed previews; run live OCR on the original bitmap.
             val width = bitmap.width.coerceAtMost(1080)
             val height = (bitmap.height.toLong() * width / bitmap.width).toInt().coerceAtLeast(1)
-            preview = if (width == bitmap.width) bitmap else
+            val scaled = if (width == bitmap.width) bitmap else
                 Bitmap.createScaledBitmap(bitmap, width, height, true)
+            preview = scaled
             val signature = IntArray(24 * 48) { index ->
-                val x = index % 24 * preview.width / 24
-                val y = index / 24 * preview.height / 48
-                val color = preview.getPixel(x, y)
+                val x = index % 24 * scaled.width / 24
+                val y = index / 24 * scaled.height / 48
+                val color = scaled.getPixel(x, y)
                 val red = color shr 16 and 255
                 val green = color shr 8 and 255
                 val blue = color and 255
                 (red * 3 + green * 6 + blue) / 10
             }
             val data = ByteArrayOutputStream()
-            check(preview.compress(Bitmap.CompressFormat.JPEG, 85, data)) {
+            check(scaled.compress(Bitmap.CompressFormat.JPEG, 85, data)) {
                 "Could not encode temporary rolling frame"
             }
             val now = SystemClock.elapsedRealtime()
