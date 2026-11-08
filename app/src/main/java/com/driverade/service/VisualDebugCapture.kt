@@ -308,6 +308,9 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
                             " width=" + image.width + " height=" + image.height +
                             " source=" + source + " windowId=" + (chosen?.id ?: "NA") +
                             " pngOptIn=" + saveDebug)
+                        // Initiate live OCR first: diagnostic PNG encoding must not delay it.
+                        if (pkg == "com.ubercab.driver" && trigger != "PREROLL")
+                            inspectUberImage(image, captureId, source)
                         val visualChange = if (saveDebug && pkg == "com.ubercab.driver")
                             stageRollingFrame(image, pkg, captureId, source)
                         else {
@@ -319,7 +322,7 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
                             false
                         }
                         if (pkg == "com.ubercab.driver" &&
-                            (trigger != "PREROLL" || visualChange))
+                            trigger == "PREROLL" && visualChange)
                             inspectUberImage(image, captureId, source)
                     } catch (error: Exception) {
                         log("CAPTURE_PROCESS_FAILED", "capture=" + captureId +
