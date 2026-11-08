@@ -436,7 +436,14 @@ class OptimizedOfferEngine : AccessibilityService() {
                             processRestoredTrees(platform, pkg, id, null, -1)
                         }
                     }
-                    if (android.os.SystemClock.elapsedRealtime() - lastUberEventElapsed < 8_000L &&
+                    val recentlyTriggered =
+                        android.os.SystemClock.elapsedRealtime() - lastUberEventElapsed < 8_000L
+                    val unreadableUberOverlay = windows.orEmpty().any { w ->
+                        val root = runCatching { w.root }.getOrNull()
+                        w.layer >= 1 && root?.packageName?.toString() == "com.ubercab.driver" &&
+                            isLegacyBlankOfferWindow(root)
+                    }
+                    if ((recentlyTriggered || unreadableUberOverlay) &&
                         prefs.isPlatformEnabled("UBER")) {
                         visualDebug?.observeTimedUber("timed-" + System.currentTimeMillis())
                     }
@@ -448,6 +455,29 @@ class OptimizedOfferEngine : AccessibilityService() {
                 mainHandler.postDelayed(this, 1_200L)
             }
         }
+    }
+
+    /** Driverlogger3_4 blank RecyclerView overlay heuristic, bounded to 120 nodes. */
+    private fun isLegacyBlankOfferWindow(root: AccessibilityNodeInfo): Boolean {
+        val rect = android.graphics.Rect()
+        root.getBoundsInScreen(rect)
+        if (rect.height() < 400 || root.childCount <= 1) return false
+        var scanned = 0
+        var hasRecycler = false
+        var hasText = false
+        fun visit(node: AccessibilityNodeInfo, depth: Int) {
+            if (depth > 12 || scanned++ >= 120) return
+            if (node.className?.toString()?.contains("RecyclerView") == true) hasRecycler = true
+            if (!node.text.isNullOrBlank() || !node.contentDescription.isNullOrBlank()) hasText = true
+            if (hasText) return
+            for (i in 0 until node.childCount.coerceAtMost(60)) {
+                val child = runCatching { node.getChild(i) }.getOrNull()
+                if (child != null) visit(child, depth + 1)
+                if (hasText || scanned >= 120) break
+            }
+        }
+        visit(root, 0)
+        return hasRecycler && !hasText
     }
 
     private fun handleRestoredOcr(captureId: String, ocr: String) {
