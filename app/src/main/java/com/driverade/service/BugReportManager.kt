@@ -60,13 +60,27 @@ object BugReportManager {
         val images = imageDir.listFiles()?.filter {
             it.isFile && it.extension.equals("png", true) && it.length() > 8
         }?.sortedBy { it.name }.orEmpty()
+        val screenshotSavingEnabled = context.getSharedPreferences("driverade_visual_debug", 0)
+            .getBoolean("enabled", false)
         InternalDiagnosticsLogger.logInteraction(context, "VISUAL_DEBUG_EXPORT_PRECHECK",
-            "enabled=${context.getSharedPreferences("driverade_visual_debug", 0).getBoolean("enabled", false)} " +
-                "imageCount=${images.size} logExists=${diagnostic.isFile}")
+            "enabled=$screenshotSavingEnabled imageCount=${images.size} logExists=${diagnostic.isFile}")
         if (images.isEmpty()) {
-            InternalDiagnosticsLogger.logInteraction(context, "VISUAL_DEBUG_EXPORT_FAILED",
-                "No verified PNG files to export; capture pipeline requires investigation")
-            Toast.makeText(context, "No screenshots saved. Check visual debug capture diagnostics.", Toast.LENGTH_LONG).show()
+            if (!screenshotSavingEnabled) {
+                // No PNG files is the expected outcome when visual-debug saving is OFF.
+                // The separate text diagnostics export is still available.
+                InternalDiagnosticsLogger.logInteraction(context, "VISUAL_DEBUG_EXPORT_SKIPPED",
+                    "reason=SCREENSHOT_SAVING_DISABLED imageCount=0 " +
+                        "transientOcrUnaffected=true textExportAvailable=true")
+                Toast.makeText(context,
+                    "No screenshots expected: screenshot saving is OFF. Use Export Logs for text diagnostics.",
+                    Toast.LENGTH_LONG).show()
+            } else {
+                InternalDiagnosticsLogger.logInteraction(context, "VISUAL_DEBUG_EXPORT_FAILED",
+                    "reason=NO_PNG_WITH_SAVING_ENABLED; capture pipeline requires investigation")
+                Toast.makeText(context,
+                    "No screenshots saved. Check visual debug capture diagnostics.",
+                    Toast.LENGTH_LONG).show()
+            }
             return false
         }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
