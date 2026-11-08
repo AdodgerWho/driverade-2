@@ -544,7 +544,7 @@ class MainActivity : AppCompatActivity() {
                 if (enabled) {
                     AlertDialog.Builder(this@MainActivity)
                         .setTitle("Enable local screenshots?")
-                        .setMessage("Captures gig-app screens during debugging. Screens may contain names, addresses and other private information. Screenshots stay on this device, are not automatically shared, and only the newest 40 are retained.")
+                        .setMessage("Captures gig-app screens during debugging. Screens may contain names, addresses and other private information. Screenshots stay on this device, are not automatically shared, and up to 100 verified PNGs are retained. Live Uber OCR can run locally without saving screenshots.")
                         .setPositiveButton("Enable") { _, _ ->
                             debugPrefs.edit().putBoolean("enabled", true).apply()
                         }
