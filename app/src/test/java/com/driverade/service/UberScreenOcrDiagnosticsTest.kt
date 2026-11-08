@@ -43,4 +43,13 @@ class UberScreenOcrDiagnosticsTest {
         assertFalse(summary.likelyOfferCard)
         assertEquals(emptyList<Double>(), summary.amounts)
     }
+
+    @Test fun captureProvenanceReflectsImageSource() {
+        val summary = UberScreenOcrDiagnostics.inspect("Uber Driver online")
+        assertTrue(summary.diagnostic("WINDOW").contains("source=WINDOW_OCR"))
+        assertTrue(summary.diagnostic("DISPLAY").contains("source=DISPLAY_OCR"))
+        assertTrue(summary.diagnostic("DISPLAY_FALLBACK").contains("source=DISPLAY_OCR"))
+        assertTrue(summary.diagnostic().contains("source=UNKNOWN_OCR"))
+        assertTrue(summary.diagnostic("WINDOW").contains("rawText=OMITTED"))
+    }
 }
