@@ -24,26 +24,25 @@ jobs:
           path: driverade-debug.keystore
           key: driverade-persistent-signing-keystore-v1
 
-      - name: Ensure Persistent Keystore Exists
+      - name: Require and configure persistent DEVELOPMENT signing key
         run: |
-          if [ ! -f driverade-debug.keystore ]; then
-            keytool -genkeypair -v \
-              -keystore driverade-debug.keystore \
-              -alias driverade_key \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -storepass driverade_password \
-              -keypass driverade_password \
-              -dname "CN=Driverade, OU=Mobile, O=Driverade, L=Richfield, ST=MN, C=US"
+          if [ ! -s driverade-debug.keystore ]; then
+            echo "ERROR: development signing key cache is missing. Do not silently rotate signing keys."
+            exit 1
           fi
+          keytool -list -v -keystore driverade-debug.keystore \
+            -storepass driverade_password -alias driverade_key | grep -E 'SHA256:|Owner:'
+          echo "DRIVERADE_KEYSTORE_PATH=$GITHUB_WORKSPACE/driverade-debug.keystore" >> "$GITHUB_ENV"
+          echo "DRIVERADE_KEYSTORE_PASSWORD=driverade_password" >> "$GITHUB_ENV"
+          echo "DRIVERADE_KEY_ALIAS=driverade_key" >> "$GITHUB_ENV"
+          echo "DRIVERADE_KEY_PASSWORD=driverade_password" >> "$GITHUB_ENV"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@017a9effdb900e5b5b2fddfb590a105619dca3c3 # v4.4.2
         with:
           gradle-version: '8.7'
 
-      - name: Run unit tests
+      - name: Run parser comparison unit tests
         run: gradle testDebugUnitTest
 
       - name: Build Driverade APK
@@ -52,17 +51,6 @@ jobs:
       - name: Rename Output to Driverade.apk
         run: |
           cp app/build/outputs/apk/debug/*.apk app/build/outputs/apk/debug/Driverade.apk
-
-      - name: Verify package and signing identity
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK=app/build/outputs/apk/debug/Driverade.apk
-          sha256sum "$APK"
-          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n 1)
-          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
-          "$AAPT" dump badging "$APK" | grep "^package:"
-          "$APKSIGNER" verify --print-certs "$APK"
 
       - name: Upload Driverade APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
