@@ -118,3 +118,10 @@ The owner installed the permanently signed PR #37 test build as an **in-place up
 - **Next test:** run 17-fixture injector on 10257; collect an actual offer with capture-ID correlation and opt-in PNG/ZIP if needed. Avoid another redundant text export unless new activity occurs.
 
 Source filenames are evidence identifiers only; do not copy private raw logs/screenshots into this public branch.
+
+
+## November 8 — owner-reported 17-fixture synthetic batch on installed 10257
+
+The owner ran the dedicated **Inject and compare offer cards → Run batch** UI and pasted the complete on-device result dialog: **`Driverade synthetic batch: 17/17 expectations met`**. All 17 fixtures reported `PASS` against expectations: **10 accepted** and **7 gate-rejected**. Accepted cases include Uber actionable/reservation, Lyft estimated rate, HICH, bound-payout conflict, UberX Exclusive/Match OCR, Comfort, Electric and Comfort Electric OCR. Rejected cases include earnings history, map pill, missing distance, unrelated larger-dollar incomplete card, map navigation, Comfort Electric reservation preview, and unknown-tier display. Expected payout, duration, distance, and payout provenance matched for every applicable case. Floating point representation (e.g. 9.600000000000001) was within fixture tolerance.
+
+**Evidence level:** on-device report pasted by owner; a new diagnostic export with `SYNTHETIC_BATCH_SUMMARY total=17 expected=17 unexpected=0` is still pending. This **satisfies the synthetic fixture UI gate provisionally**, not live offer acceptance, alert delivery, OCR acquisition reliability, or noninterference with live counters. The owner had initially run the Settings feature diagnostics (different suite), explaining why the prior export had no 17-fixture events. Code review found `MainActivity.onPause()` cancels an active synthetic batch; consider lifecycle resilience separately if an interrupted batch is reproduced. **Do not merge** until remaining live gates are verified.
