@@ -13,6 +13,7 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.Executors
 
 /**
  * Live Uber OCR is local and transient even when visual-debug PNG saving is off.
@@ -23,6 +24,7 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
     private val preferences = service.getSharedPreferences("driverade_visual_debug", 0)
     private val directory = File(service.filesDir, "visual_debug")
     private val busy = AtomicBoolean(false)
+    private val captureExecutor = Executors.newSingleThreadExecutor()
     private var lastCaptureElapsed = 0L
     private var serial = 0L
     private val intervalMs = 1500L
@@ -58,6 +60,7 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
     }
     fun close() {
         uberOcrListener = null
+        captureExecutor.shutdownNow()
     }
 
     private fun capture(pkg: String, captureId: String, trigger: String) {
@@ -68,7 +71,7 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
         log("REQUESTED", "capture=" + captureId + " package=" + pkg +
             " trigger=" + trigger + " savePng=" + saveDebug)
         try {
-            service.takeScreenshot(Display.DEFAULT_DISPLAY, service.mainExecutor,
+            service.takeScreenshot(Display.DEFAULT_DISPLAY, captureExecutor,
                 object : AccessibilityService.TakeScreenshotCallback {
                     override fun onFailure(errorCode: Int) {
                         log("CAPTURE_FAILED", "capture=" + captureId + " package=" + pkg + " code=" + errorCode)
