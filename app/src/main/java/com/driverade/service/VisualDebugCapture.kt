@@ -129,7 +129,7 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
                                 " reason=VISUAL_DEBUG_DISABLED pngSaved=false " +
                                 "transientUberOcr=" + (pkg == "com.ubercab.driver"))
                         }
-                        if (pkg == "com.ubercab.driver") inspectUberImage(image, captureId)
+                        if (pkg == "com.ubercab.driver") inspectUberImage(image, captureId, source)
                     } catch (error: Exception) {
                         log("CAPTURE_PROCESS_FAILED", "capture=" + captureId +
                             " reason=" + error.javaClass.simpleName)
@@ -157,7 +157,7 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
      * screenshot or (if unavailable) the display. The parser must enforce
      * its own UberX/action/complete-leg checks before publishing an offer.
      */
-    private fun inspectUberImage(bitmap: Bitmap, captureId: String) {
+    private fun inspectUberImage(bitmap: Bitmap, captureId: String, captureSource: String) {
         val copy = try { bitmap.copy(Bitmap.Config.ARGB_8888, false) } catch (_: Exception) { null }
         if (copy == null) {
             log("OCR_FAILED", "capture=$captureId reason=BITMAP_COPY_FAILED")
@@ -175,7 +175,7 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
                         " rawText=OMITTED")
                     val summary = UberScreenOcrDiagnostics.inspect(result.text)
                     InternalDiagnosticsLogger.logInteraction(service, "UBER_OCR_DIAGNOSTIC",
-                        "capture=" + captureId + " " + summary.diagnostic())
+                        "capture=" + captureId + " " + summary.diagnostic(captureSource))
                     uberOcrListener?.invoke(captureId, result.text)
                 }
                 .addOnFailureListener { error ->
