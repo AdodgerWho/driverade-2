@@ -44,6 +44,26 @@ class UberScreenOcrDiagnosticsTest {
         assertEquals(emptyList<Double>(), summary.amounts)
     }
 
+
+    @Test fun comfortElectricIsRecognizedAndRejectedCardsRemainObservable() {
+        val card = UberScreenOcrDiagnostics.inspect(
+            "Comfort Electric\n\$20.80\n5 min 1.2 mi\n20 min 7.5 mi\nAccept", "WINDOW")
+        assertTrue(card.likelyOfferCard)
+        assertEquals("COMFORT_ELECTRIC", card.serviceType)
+        assertTrue(card.actionPresent)
+        val preview = UberScreenOcrDiagnostics.inspect("Comfort Electric\n\$15.40\nView trip")
+        assertFalse(preview.likelyOfferCard)
+        assertEquals(1, preview.amountCandidateCount)
+        assertTrue(preview.amounts.isEmpty())
+        assertTrue(preview.diagnostic().contains("amountCount=1"))
+    }
+
+    @Test fun categoryUnknownCanOnlyBeConsideredInTrustedWindow() {
+        val raw = "Future tier\n\$19.80\n5 min 1.2 mi\n12 min 5.1 mi\nAccept"
+        assertTrue(UberScreenOcrDiagnostics.inspect(raw, "WINDOW").likelyOfferCard)
+        assertFalse(UberScreenOcrDiagnostics.inspect(raw, "DISPLAY").likelyOfferCard)
+    }
+
     @Test fun captureProvenanceReflectsImageSource() {
         val summary = UberScreenOcrDiagnostics.inspect("Uber Driver online")
         assertTrue(summary.diagnostic("WINDOW").contains("source=WINDOW_OCR"))
