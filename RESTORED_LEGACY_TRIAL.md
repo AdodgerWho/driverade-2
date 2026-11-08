@@ -1,0 +1,127 @@
+# Restored Driverlogger3_4 parser — on-device trial
+
+Status: experimental. Stacked on PR #34; not approved for main.
+
+Original reference: Driverlogger3_4/LoggerService.java, Offers.java, Rules.java.
+The active parser is a Kotlin port of the legacy design with stricter payout and two-leg safeguards.
+
+## Acquisition paths
+1. Event-triggered accessibility: watched window and notification events examine each app-owned root separately. Diagnostics: RESTORED_TREE_PARSE, RESTORED_TREE_MISS, UBER_FIELD_PROVENANCE, PARSER_COMPARISON.
+2. Independent timed reinspection: every 1200 ms while screen is interactive, examine watched windows. Recent Uber events also allow OCR retries for eight seconds.
+3. On-device OCR: try the specific Uber window through Android API 34+; fall back to display capture only when the window is unavailable and log it. OCR text is not saved in routine diagnostics. Diagnostics: VISUAL_DEBUG_CAPTURE_SUCCESS, RESTORED_OCR_PARSE.
+
+The restored parser is authoritative for Uber/Lyft/Hich offer decisions. Existing alert toggle, overlays, Android Auto, stats and debug export remain connected. The previous flat largest-dollar parser no longer determines live offers. OfferParserComparison is read-only.
+
+## Required trial
+
+- [ ] CI unit tests and APK build pass at exact head SHA.
+- [ ] Confirm APK signing compatibility before installing over current version.
+- [ ] Run all 12 batch fixtures. Verify exact payout, minutes and miles, not only PASS/GATE_REJECT. Expected: SYNTHETIC_BATCH_SUMMARY 12/12.
+- [ ] Confirm synthetic runs do not affect live alerts, counters or stats.
+- [ ] Observe one real Uber Match or Exclusive in background; inspect TREE_MISS/TREE_PARSE, capture source, RESTORED_OCR_PARSE and PARSE_RESULT by capture IDs.
+- [ ] Compare screenshot with parsed payout and both pickup/trip legs, and confirm only one alert after retries.
+- [ ] Verify non-offer map pill / navigation does not result in PARSE_RESULT.
+- [ ] Verify visual-debug ON exports actual PNG; OFF saves no PNG while live OCR can still run.
+- [ ] Recheck Lyft/Hich on available captured fixtures and with live events as available.
+- [ ] Review battery/CPU and ensure no raw OCR or rider data appears in ordinary diagnostic text.
+- [ ] With Visual Debug Capture ON, observe ROLLING_STAGED before an offer, ROLLING_TRIGGER on an offer/window/visual change, ROLLING_FRAME_SAVED for both PRE_ROLL and POST_ROLL with matching capture IDs, and verify the exported ZIP contains readable PNGs. Compare ROLLING_OCR_FRAME for selected pre/post frames against the original live OCR diagnostic to identify which image was recognized correctly.
+- [ ] Turn Visual Debug Capture OFF while a buffer is active: verify ROLLING_CLEARED, no further new PNGs, no automatic uploads, and normal transient live OCR remains available.
+- [ ] Confirm periods without an offer or visual trigger can leave zero PNGs without being counted as screenshot pipeline failures.
+
+## Numeric reference cases
+- Uber Exclusive: $5.53; pickup 3 min/0.7 mi, trip 7 min/2.1 mi, total 10 min/2.8 mi, $33.18/hr.
+- Uber Match: $6.74; pickup 6 min/2.4 mi, trip 7 min/2.3 mi, total 13 min/4.7 mi, $31.11/hr.
+- Historical conflict: Accept $12.04 and unrelated $13.08 must select $12.04 or reject if provenance unavailable.
+- Lyft: $18.50 payout and distinct $37/hr app label, 5+25 minutes and 9 miles.
+
+## Important limits
+- The old image first-dollar assumption is intentionally discarded; two distinct leg pairs are mandatory, not guessed.
+- Raw OCR is transient; raw accessibility trace persistence requires user-enabled Developer Inspection.
+- **Restored rolling OCR diagnostic frame buffer:** with Visual Debug Capture explicitly on, Driverade stages compressed image previews in app memory for **8 seconds before** an interesting event and saves the next **10 seconds** after. Memory is bounded to **10 previews / 8 MB**, duplicate previews are suppressed, and remaining previews expire automatically. An Uber window transition, substantial visual change, likely OCR offer card, or recognized accessibility-tree offer can trigger promotion.
+- The opt-in rolling previews are used to find the correct offer frame, not as an additional authoritative live parser. **Live OCR still uses the original full-resolution screenshot**; a bounded sample of promoted pre/post previews is also reprocessed by ML Kit for diagnostic-only comparison (`VISUAL_DEBUG_ROLLING_OCR_FRAME`). No buffered OCR result changes live offers or alerts. Selected buffer previews are converted into the existing verifiable PNG export path. Existing exported PNG count remains capped at 100, and routine text diagnostics contain only capture IDs / reason codes, not raw pixels or OCR strings.
+- **Prior to an offer:** while an Uber-owned window is available and screenshot opt-in is enabled, timed captures create the pre-roll history. **After a trigger:** further frames are retained for 10 seconds. Turning the switch off immediately discards the in-memory buffer but does not delete already exported/saved files. An opt-in session without any trigger may legitimately produce no PNGs.
+- This is an opt-in diagnostic refinement, **not a live parser correctness or merge prerequisite**. The original Driverlogger3_4 retention configuration (8s/10s and grayscale change thresholds) informed it; new memory caps and PNG export are Driverade-specific.
+- Synthetic text OCR fixtures do not establish real screenshot recognition; the next live Uber offer is required.
+
+
+## November 7 diagnostic baseline and correlation hooks (PR #37)
+
+The user's *installed* diagnostic baseline is from **PR #34**, not this uninstalled PR #37:
+- Build ID `c3cee61a968cd3f2f6d964a9c59987b57f670bb3` (version 3.64); captured 2026-11-07.
+- Explicitly enabled Developer Inspection yielded 8 private Uber hierarchy records, including readable Uber-owned roots in several captures.
+- The exported screenshot ZIP contains **24 PNGs**, and its `VISUAL_DEBUG_EXPORT_PRECHECK` says `enabled=true imageCount=24`. This is evidence that screenshot persistence was opted in at the time, **not** by itself a capture bug.
+- No `RESTORED_*` markers can exist in that baseline, as PR #37 is not installed. Never label it a live test of the restored three-path parser.
+- Private raw JSONL and screenshot ZIP belong only in the user's restricted Drive diagnostics archive; **do not commit or upload them to this public repository**.
+
+Instrumentation added directly to this PR's existing branch (without changing parser acceptance, alerts, OCR semantics or screenshot opt-in):
+1. `RESTORED_DIAGNOSTIC_READY`: active build's diagnostic readiness and persistence-mode state.
+2. `RESTORED_ACQUISITION`: event vs timed acquisition, target window ID, app-owned root count and event-source ownership; `RESTORED_TREE_PARSE/MISS` includes trigger and parser reason.
+3. `RESTORED_TIMED_OCR_TRIGGER`: why a timed image path was requested.
+4. `VISUAL_DEBUG_CAPTURE_SUCCESS`, `VISUAL_DEBUG_PNG_SKIPPED` and `VISUAL_DEBUG_FILE_VERIFIED`: distinguish an in-memory screenshot used for OCR from a PNG deliberately retained on disk. Turning screenshot saving **off** does not delete earlier saved PNGs.
+5. `VISUAL_DEBUG_OCR_REQUESTED/COMPLETED`, `RESTORED_OCR_PARSE/SKIPPED`: correlate local ML Kit OCR completion, listener connection, gate decisions, and stale-event skips; never write raw OCR text to routine diagnostics.
+6. Opt-in `DeveloperInspection` private JSONL now includes the same `captureId` as the ordinary `DEV_INSPECTION_CAPTURE` and `PLATFORM_MATCH` logs. This is available **only in a build containing this change**, not retroactively for the baseline.
+
+### Next device verification on this exact PR build
+- Record the Build ID and ensure the revision is this PR's updated head.
+- With visual-debug PNG persistence **off**, observe an Uber accessibility event. Check the capture ID across `PLATFORM_MATCH`, `RESTORED_ACQUISITION`, `RESTORED_TREE_PARSE/MISS`, `VISUAL_DEBUG_OCR_COMPLETED`, and `RESTORED_OCR_PARSE/SKIPPED`. `VISUAL_DEBUG_PNG_SKIPPED` means no **new** PNG for that image. Existing PNGs may remain from earlier sessions.
+- If an actual offer appears, compare observed offer fields with `PARSE_RESULT` and `ALERT_DISPATCH/ALERT_DISABLED`; verify one alert and no map-pill false positives.
+- With PNG saving on deliberately, expect `VISUAL_DEBUG_FILE_VERIFIED` and a readable opt-in ZIP with the reported count. Do not confuse `CAPTURE_SUCCESS` (a transient bitmap) with `FILE_VERIFIED` (persisted PNG).
+- Distinguish the private inspector's every-few-seconds throttle from normal event parsing. If no matching private JSONL entry exists, that does not imply the regular event path failed.
+- Treat feature-check `BLOCKED` as an unperformed live test rather than a failure or certification; synthetic batch tests are separate.
+
+
+## November 8 — Uber service-neutral OCR correction (PR #37)
+
+**Status: implementation on experimental branch; verify CI and on-device results before merging to main.**
+The installed permanently signed build (3.64, code 10236) showed successful Uber event acquisition and local ML Kit OCR, but 56 OCR frames were all rejected at the old `ocr_no_uberx_card_label` gate. The owner drives primarily Comfort, Electric and Comfort Electric. Private hierarchy observations showed the subsequent pickup/waiting state; a usable screenshot of the approximately $20 actionable offer was not retained. Do not claim this proves acquisition of the offer frame.
+
+The update reuses the existing standardized `RestoredOfferParser.Candidate` (payout, pickup minutes/miles, trip minutes/miles, combined minutes/miles, hourly rate) and the already connected `OfferEvaluation` output. It does not introduce a competing offer-output path or change Lyft/Hich behavior.
+
+- OCR may recognize multiple Uber service labels. A verified Uber-owned window screenshot can also parse a future/unknown service, but **only** with an explicit offer action, unambiguous payout, exactly two complete minute/mile legs, and rejection of history/navigation content.
+- A display screenshot may contain another foreground app: it requires a recognized service label, plus the existing recent-Uber-event requirement, before those same strict parsing gates run. This is a conservative fallback rather than a blanket label-free display parser.
+- Screenshot selection prefers meaningful Uber-owned window area over a small event overlay when both are present. It does not bypass screenshot access errors or secure-window restrictions.
+- `UBER_OCR_DIAGNOSTIC` logs a canonical service type, action presence and capped candidate counts even if the card is rejected, keeping raw OCR text omitted and existing opt-in PNG behavior unchanged. Diagnostic-only detection is never an offer publisher.
+- The on-device synthetic catalog now contains **17** fixtures (original 12 preserved, 5 added), including Comfort, Electric, Comfort Electric, a nonactionable reservation preview and an unknown-service display rejection. Extra JVM tests cover unknown-service window provenance, payout ambiguity, window selection, and negative cases.
+- The reference screenshot in the private `Driverade / Uber Parser Reference Screenshots` Drive folder shows a **Comfort Electric reservation preview** with `View trip` but no actionable offer; it is a negative evidence case. Private images, raw text and rider information are not copied into GitHub.
+
+**Next device checks:** Verify the new build SHA, signing certificate and versionCode (automatic PR CI is still debug-signed; permanent signing requires separately authorized workflow_dispatch). Run all 17 synthetic fixtures. With visual-debug explicitly opted in, capture a real offer and correlate window area / source, `VISUAL_DEBUG_OCR_COMPLETED`, `UBER_OCR_DIAGNOSTIC`, `RESTORED_OCR_PARSE`, `PARSE_RESULT`, and `ALERT_DISPATCH` by capture ID. Compare payout and both leg metrics to actual screenshot; ensure no duplicate alert or false positives. Inspect the private PNG bundle only in a restricted workspace.
+
+
+## November 8 — installed update evidence and next iteration gate
+
+The owner installed the permanently signed PR #37 test build as an **in-place update** over versionCode 10236. Current test build: version 3.64, versionCode **10257**, Actions run **42526682710**, build SHA **64c196672fc321e2964ddd5d65ee9e3559a04641**. Android reported "App updated"; Home, Insights, and Settings opened, with Accessibility and Overlay shown enabled. This supports update compatibility and basic UI smoke testing, not offer parsing correctness.
+
+**Cumulative diagnostic caution:** The provided text logs include events from the older 10236 installation. Always segment at `[BUILD_ID]`; older `RESTORED_*` or synthetic summaries are not evidence for 10257. In the new 10257 segment, `RESTORED_DIAGNOSTIC_READY` reported `EVENT_TREE,TIMED_TREE,UBER_WINDOW_OR_DISPLAY_OCR`, `pngOptIn=false`, `privateInspection=false`; the engine connected and feature checks ran. No new-build live `PARSE_RESULT`, `RESTORED_OCR_PARSE`, or `ALERT_DISPATCH` was observed in that short segment. This is **BLOCKED / NOT YET OBSERVED**, not a demonstrated failure. The older 12/12 synthetic batch does **not** satisfy the current 17-fixture requirement.
+
+**Next controlled iteration (do not merge):**
+1. On installed 10257, run the full **17-fixture** injector; record expected and observed payout, legs, service and rejection reasons, with no synthetic effects on real stats/alerts.
+2. During one real actionable Uber offer, collect capture-ID-linked acquisition, OCR/tree result, `PARSE_RESULT`, gate decision and alert dispatch. Compare with the visual offer, including Comfort/Electric variants. Capture false-positive map pill/history negatives.
+3. With explicit Visual Debug Capture consent, validate retained PNG/ZIP and pre/post rolling sequence; preserve privacy and test OFF separately.
+4. Diagnose only the first confirmed failing node, implement a narrow fix with regression fixtures and reason-coded diagnostics, rebuild and repeat. Do not change working downstream logic without evidence.
+5. Before any merge, check CI, Semgrep, current-main divergence, signing continuity and remaining live acceptance criteria.
+
+**Deferred earnings reconciliation:** See [EARNINGS_HISTORY_RECONCILIATION_NOTES.md](EARNINGS_HISTORY_RECONCILIATION_NOTES.md) and [DRIVERADE_NEXT_ITERATION_ROADMAP.md](DRIVERADE_NEXT_ITERATION_ROADMAP.md). The dashboard's observed potential-tip count is not an accuracy pass: running-total changes can include unmatched completed-trip earnings. Validate tip attribution only after completed-trip payout linkage and labeled history parsing. Do not infer tips from offer-to-final payout differences.
+
+
+## November 8 — re-exported diagnostics review (uploaded 1794176459326 / private 1794176464809)
+
+**Evidence classification:** text export is cumulative across build IDs; private inspection JSONL contains 79 older-build captures only. Raw private inspection JSONL stays out of the repository.
+
+- `[BUILD_ID]` at 10:18:50: **10236** (`b5d971a3e5c86219e331de4268f2b86bf2722c9f`); `[BUILD_ID]` at 16:04:55: **10257** (`64c196672fc321e2964ddd5d65ee9e3559a04641`). Never combine counters across this boundary.
+- The 10236 segment contains **12 synthetic fixture results** and `SYNTHETIC_BATCH_SUMMARY total=12 expected=12 unexpected=0`. **Not** the 17-fixture 10257 run.
+- The new 10257 segment contains **11 `VISUAL_DEBUG_OCR_COMPLETED` / `UBER_OCR_DIAGNOSTIC` / `RESTORED_OCR_PARSE`** events, **72 `RESTORED_TREE_PARSE`**, and **465 `RESTORED_ACQUISITION`** entries. The OCR reject reasons are `missing_uber_action` (6), `ocr_no_service_context` (4), and `history_or_navigation` (1). This demonstrates the revised service/action diagnostic path executes; no actionable offer is established.
+- Current-build OCR examples show `serviceType=UBERX` with `actionPresent=false` and multiple amounts/minute/mile candidate counts. Do **not** loosen action or provenance gates based only on these partial observations.
+- **Zero** `SYNTHETIC_TEST_RESULT`, `SYNTHETIC_BATCH_SUMMARY`, `PARSE_RESULT`, or `ALERT_DISPATCH` events in the 10257 segment.
+- A 10257 `TIP_OBSERVED` record reports Lyft explicit tip **$11.40**, provisional. This is evidence of detection, **not** evidence of ledger accuracy or trip reconciliation.
+- 10257 `VISUAL_DEBUG_EXPORT_PRECHECK` reports `enabled=false imageCount=0`; absence of retained PNG is expected with persistence disabled.
+- Private inspection JSONL: **79 captures** from approximately 10:23 to 10:36 (before the 16:04:55 10257 startup); not a current-build private hierarchy inspection.
+- **Next test:** run 17-fixture injector on 10257; collect an actual offer with capture-ID correlation and opt-in PNG/ZIP if needed. Avoid another redundant text export unless new activity occurs.
+
+Source filenames are evidence identifiers only; do not copy private raw logs/screenshots into this public branch.
+
+
+## November 8 — owner-reported 17-fixture synthetic batch on installed 10257
+
+The owner ran the dedicated **Inject and compare offer cards → Run batch** UI and pasted the complete on-device result dialog: **`Driverade synthetic batch: 17/17 expectations met`**. All 17 fixtures reported `PASS` against expectations: **10 accepted** and **7 gate-rejected**. Accepted cases include Uber actionable/reservation, Lyft estimated rate, HICH, bound-payout conflict, UberX Exclusive/Match OCR, Comfort, Electric and Comfort Electric OCR. Rejected cases include earnings history, map pill, missing distance, unrelated larger-dollar incomplete card, map navigation, Comfort Electric reservation preview, and unknown-tier display. Expected payout, duration, distance, and payout provenance matched for every applicable case. Floating point representation (e.g. 9.600000000000001) was within fixture tolerance.
+
+**Evidence level:** on-device report pasted by owner; a new diagnostic export with `SYNTHETIC_BATCH_SUMMARY total=17 expected=17 unexpected=0` is still pending. This **satisfies the synthetic fixture UI gate provisionally**, not live offer acceptance, alert delivery, OCR acquisition reliability, or noninterference with live counters. The owner had initially run the Settings feature diagnostics (different suite), explaining why the prior export had no 17-fixture events. Code review found `MainActivity.onPause()` cancels an active synthetic batch; consider lifecycle resilience separately if an interrupted batch is reproduced. **Do not merge** until remaining live gates are verified.

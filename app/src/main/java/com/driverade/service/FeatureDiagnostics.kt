@@ -46,13 +46,15 @@ object FeatureDiagnostics {
                 OptimizedOfferEngine.PACKAGE_PLATFORM_MAP["com.ubercab.driver"] == "UBER") to
                 "Known Uber/Lyft package mappings"
         }
-        checks += check("Offer gate rejects earnings history") {
-            (!OfferScreenClassifier.isActiveOffer(listOf("Your earnings", "$101.83", "Trip", "Accept", "20 min", "4 mi"))) to
-                "Historical balance must not trigger an offer"
+        checks += check("Restored live gate rejects earnings history") {
+            (RestoredOfferParser.fromTree("UBER", listOf("Your earnings", "\$101.83",
+                "Trip", "Accept", "10 min • 2 mi", "20 min • 4 mi")).offer == null) to
+                "Historical balance must not trigger an active offer"
         }
-        checks += check("Offer gate accepts actionable sample") {
-            OfferScreenClassifier.isActiveOffer(listOf("Trip request", "Accept", "$18.50", "25 min", "5.2 mi")) to
-                "Synthetic offer classification only; not a live platform test"
+        checks += check("Restored live gate accepts complete actionable sample") {
+            (RestoredOfferParser.fromTree("UBER", listOf("Trip request", "Accept",
+                "\$18.50", "5 min • 1.0 mi", "20 min • 4.2 mi")).offer != null) to
+                "Two-leg synthetic offer classification only; not a live platform test"
         }
         checks += check("Lyft shadow comparison fixture") {
             val nodes = listOf("Ride request", "Accept", "$18.50",
@@ -77,6 +79,38 @@ object FeatureDiagnostics {
             (report.status == "GATE_REJECT") to
                 "Historical earnings remain rejected even when values are present"
         }
+        checks += check("Restored Uber Exclusive OCR fixture") {
+            val result = RestoredOfferParser.fromUberOcr(
+                "UberX Exclusive\n\$5.53\n3 min • 0.7 mi\n7 mins • 2.1 mi\nAccept")
+            val offer = result.offer
+            (offer != null && offer.kind == "live" &&
+                kotlin.math.abs(offer.payout - 5.53) < 0.01 &&
+                kotlin.math.abs(offer.hourlyRate - 33.18) < 0.01) to
+                "Historical visual $5.53 Exclusive expected 10 min; synthetic OCR text only"
+        }
+        checks += check("Restored Uber Match OCR fixture") {
+            val result = RestoredOfferParser.fromUberOcr(
+                "UberX\n\$6.74\n6 min • 2.4 mi\n7 mins • 2.3 mi\nMatch")
+            val offer = result.offer
+            (offer != null && offer.kind == "match" &&
+                kotlin.math.abs(offer.payout - 6.74) < 0.01 &&
+                kotlin.math.abs(offer.totalMiles - 4.7) < 0.01) to
+                "Historical visual $6.74 Match expected 13 min; synthetic OCR text only"
+        }
+        checks += check("Restored Uber ambiguous payout rejection") {
+            val result = RestoredOfferParser.fromTree("UBER", listOf(
+                "Trip request", "Accept", "\$12.04", "\$13.08",
+                "6 min • 2 mi", "7 min • 3 mi"))
+            (result.offer == null) to "No arbitrary largest-dollar selection"
+        }
+        checks += Check("Live restored OCR and timed accessibility inspection", "BLOCKED",
+            "Requires actual background Uber offer; verify RESTORED_TREE_PARSE, " +
+                "RESTORED_OCR_PARSE and PARSE_RESULT; synthetic tests do not prove capture")
+        checks += Check("Restored three-path diagnostic correlation", "BLOCKED",
+            "New-build device evidence required: RESTORED_DIAGNOSTIC_READY, " +
+                "RESTORED_ACQUISITION (EVENT/TIMED), RESTORED_TREE_PARSE or MISS, " +
+                "VISUAL_DEBUG_OCR_REQUESTED/COMPLETED, RESTORED_OCR_PARSE or SKIPPED; " +
+                "match capture IDs. Synthetic parser success cannot verify live capture")
         checks += Check("Synthetic result delivery to dashboard", "BLOCKED",
             "Run the injector; require a comparison dialog and PARSER_COMPARISON export record")
         checks += check("Tip ledger read") {
@@ -112,10 +146,35 @@ object FeatureDiagnostics {
                 }
             }.getOrDefault(false)
         }
+        checks += Check("PNG persistence vs transient OCR", "BLOCKED",
+            "pngOptIn=$visualEnabled retainedPng=${screenshotFiles.size}; " +
+                "retained files may predate the current toggle. With PNG opt-in OFF, " +
+                "Uber OCR still operates transiently; expect VISUAL_DEBUG_PNG_SKIPPED " +
+                "and VISUAL_DEBUG_OCR_COMPLETED, and no new VISUAL_DEBUG_FILE_VERIFIED")
         checks += Check("Screenshot capture file verification",
-            if (validScreenshots > 0) "PASS" else if (visualEnabled) "FAIL" else "BLOCKED",
+            if (validScreenshots > 0) "PASS" else "BLOCKED",
             "optIn=$visualEnabled savedPng=${screenshotFiles.size} verifiedPng=$validScreenshots; " +
-                "PASS proves readable image files exist, not that the current screen was captured")
+                "PASS proves readable selected image files exist; opt-in rolling mode may save none " +
+                "until an offer/window/visual-change trigger, not proof of current-screen capture")
+        checks += check("Rolling OCR pre/post frame selector") {
+            val ring = RollingOcrFrameBuffer()
+            fun frame(id: String, t: Long, shade: Int) =
+                RollingOcrFrameBuffer.Frame(id, t, "WINDOW", ByteArray(24) { shade.toByte() },
+                    IntArray(12) { shade })
+            ring.add(frame("expired", 1_000L, 5))
+            ring.add(frame("relevant", 4_000L, 25))
+            val before = ring.promote(10_000L).map { it.captureId }
+            val after = ring.add(frame("followup", 11_000L, 50)).toPersist.map { it.captureId }
+            val passed = before == listOf("relevant") && after == listOf("followup")
+            ring.clear()
+            (passed && ring.pendingCount == 0) to
+                "8s pre-roll, 10s post-roll and memory clearing; pure logic, not live image capture"
+        }
+        val rollingOptIn = context.getSharedPreferences("driverade_visual_debug", 0)
+            .getBoolean("enabled", false)
+        checks += Check("Rolling OCR screenshot sequence on device", "BLOCKED",
+            "Opt-in=$rollingOptIn; verify ROLLING_STAGED, ROLLING_TRIGGER and " +
+                "ROLLING_FRAME_SAVED with matching capture IDs and readable exported PNGs")
         checks += Check("Screenshot retention capacity",
             if (screenshotFiles.size <= VisualDebugCapture.MAX_FILES) "PASS" else "FAIL",
             "limit=${VisualDebugCapture.MAX_FILES} saved=${screenshotFiles.size} verified=$validScreenshots; " +

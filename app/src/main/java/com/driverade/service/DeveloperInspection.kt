@@ -66,7 +66,7 @@ internal object DeveloperInspection {
 
     fun clear(context: Context): Boolean = synchronized(lock) { !file(context).exists() || file(context).delete() }
 
-    fun observe(context: Context, event: AccessibilityEvent,
+    fun observe(context: Context, event: AccessibilityEvent, captureId: String,
                 windows: List<AccessibilityWindowInfo>, activeRoot: AccessibilityNodeInfo?) {
         if (!isActive(context)) return
         val elapsed = SystemClock.elapsedRealtime()
@@ -76,6 +76,7 @@ internal object DeveloperInspection {
             try {
                 val record = JSONObject()
                     .put("timestamp", System.currentTimeMillis())
+                    .put("captureId", captureId)
                     .put("eventPackage", event.packageName?.toString())
                     .put("eventType", event.eventType)
                     .put("eventWindowId", event.windowId)
@@ -131,7 +132,8 @@ internal object DeveloperInspection {
                 }
                 out.appendText(record.toString() + "\n")
                 InternalDiagnosticsLogger.logInteraction(context, "DEV_INSPECTION_CAPTURE",
-                    "eventWindow=${event.windowId} inspectedWindows=${windows.size.coerceAtMost(MAX_WINDOWS)} " +
+                    "capture=$captureId eventWindow=${event.windowId} " +
+                    "inspectedWindows=${windows.size.coerceAtMost(MAX_WINDOWS)} " +
                     "privateFileBytes=${out.length()} text=PRIVATE_ONLY")
             } catch (e: Exception) {
                 InternalDiagnosticsLogger.logInteraction(context, "DEV_INSPECTION_ERROR",

@@ -69,7 +69,13 @@ class MainActivity : AppCompatActivity() {
                     testCase,
                     intent.getStringExtra(OptimizedOfferEngine.EXTRA_TEST_RESULT_STATUS) ?: "UNKNOWN",
                     intent.getStringExtra(OptimizedOfferEngine.EXTRA_TEST_RESULT_PROVENANCE),
-                    result
+                    result,
+                    if (intent.hasExtra(OptimizedOfferEngine.EXTRA_TEST_PAYOUT))
+                        intent.getDoubleExtra(OptimizedOfferEngine.EXTRA_TEST_PAYOUT, Double.NaN) else null,
+                    if (intent.hasExtra(OptimizedOfferEngine.EXTRA_TEST_MINUTES))
+                        intent.getDoubleExtra(OptimizedOfferEngine.EXTRA_TEST_MINUTES, Double.NaN) else null,
+                    if (intent.hasExtra(OptimizedOfferEngine.EXTRA_TEST_MILES))
+                        intent.getDoubleExtra(OptimizedOfferEngine.EXTRA_TEST_MILES, Double.NaN) else null
                 ))
                 batchIndex += 1
                 batchHandler.post { runNextSyntheticCase() }
@@ -296,13 +302,15 @@ class MainActivity : AppCompatActivity() {
     }
 
 
-    private fun sendSyntheticTest(platform: String, nodes: String, requestId: String) {
+    private fun sendSyntheticTest(platform: String, nodes: String, requestId: String,
+                                  source: String = "TREE") {
         pendingComparisonRequestId = requestId
         sendBroadcast(Intent(OptimizedOfferEngine.ACTION_TEST_OFFER_CARD).apply {
             setPackage(packageName)
             putExtra(OptimizedOfferEngine.EXTRA_TEST_PLATFORM, platform)
             putExtra(OptimizedOfferEngine.EXTRA_TEST_NODES, nodes)
             putExtra(OptimizedOfferEngine.EXTRA_TEST_REQUEST_ID, requestId)
+            putExtra(OptimizedOfferEngine.EXTRA_TEST_SOURCE, source)
         })
     }
 
@@ -348,7 +356,7 @@ class MainActivity : AppCompatActivity() {
         }
         val test = cases[batchIndex]
         val id = UUID.randomUUID().toString()
-        sendSyntheticTest(test.platform, test.nodes, id)
+        sendSyntheticTest(test.platform, test.nodes, id, test.source)
         val timeout = Runnable {
             if (activeBatch !== cases || pendingComparisonRequestId != id) return@Runnable
             pendingComparisonRequestId = null
@@ -433,7 +441,9 @@ class MainActivity : AppCompatActivity() {
                     } else if (activeBatch != null || pendingComparisonRequestId != null) {
                         Toast.makeText(this, "A parser test is already running", Toast.LENGTH_SHORT).show()
                     } else {
-                        sendSyntheticTest(platform, raw, UUID.randomUUID().toString())
+                        sendSyntheticTest(platform, raw, UUID.randomUUID().toString(),
+                            if (selectedCase < cases.size && raw == cases[selectedCase].nodes)
+                                cases[selectedCase].source else "TREE")
                         Toast.makeText(this, "Comparing parsers; results saved to diagnostics", Toast.LENGTH_LONG).show()
                     }
                 }
@@ -534,7 +544,18 @@ class MainActivity : AppCompatActivity() {
                 if (enabled) {
                     AlertDialog.Builder(this@MainActivity)
                         .setTitle("Enable local screenshots?")
-                        .setMessage("Captures gig-app screens during debugging. Screens may contain names, addresses and other private information. Screenshots stay on this device, are not automatically shared, and only the newest 40 are retained.")
+                        .setMessage(
+                            "DEVELOPER SCREENSHOT DIAGNOSTICS — may expose unintended " +
+                            "information including rider names, addresses, notifications, " +
+                            "and other visible apps. Only enable during your own testing.\\n\\n" +
+                            "While Uber is visible, Driverade holds a bounded, compressed " +
+                            "eight-second rolling frame buffer in app memory. An offer or " +
+                            "visual/window change preserves nearby frames and the following " +
+                            "ten seconds as PNGs (up to 100 total). No automatic upload. " +
+                            "Exported ZIPs are UNREDACTED. Turning this off discards the " +
+                            "memory buffer but does not delete previously saved PNGs. " +
+                            "Normal on-device Uber OCR works without saving screenshots."
+                        )
                         .setPositiveButton("Enable") { _, _ ->
                             debugPrefs.edit().putBoolean("enabled", true).apply()
                         }
@@ -545,6 +566,9 @@ class MainActivity : AppCompatActivity() {
                         .show()
                 } else {
                     debugPrefs.edit().putBoolean("enabled", false).apply()
+                    sendBroadcast(Intent(OptimizedOfferEngine.ACTION_CLEAR_VISUAL_BUFFER).apply {
+                        setPackage(packageName)
+                    })
                 }
             }
         }
