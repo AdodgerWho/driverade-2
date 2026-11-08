@@ -284,6 +284,17 @@ class OptimizedOfferEngine : AccessibilityService() {
         processRestoredTrees(platform, pkgName, captureId, event.source, event.windowId)
     }
 
+    /** Trace all state changes, but limit identical timer/event repetitions to 15s. */
+    private val restoredLogState = mutableMapOf<String, Pair<Int, Long>>()
+    private fun shouldTraceRestored(key: String, fingerprint: Int): Boolean {
+        val now = android.os.SystemClock.elapsedRealtime()
+        val previous = restoredLogState[key]
+        if (previous?.first == fingerprint && now - previous.second < 15_000L) return false
+        if (restoredLogState.size > 200) restoredLogState.clear()
+        restoredLogState[key] = fingerprint to now
+        return true
+    }
+
     /** Old Driverlogger's event + timed multi-window tree collector. */
     private fun processRestoredTrees(
         platform: String, packageName: String, captureId: String,
@@ -312,9 +323,10 @@ class OptimizedOfferEngine : AccessibilityService() {
         }
 
         if (frames.isEmpty()) {
-            InternalDiagnosticsLogger.logInteraction(this, "RESTORED_TREE_MISS",
-                "capture=" + captureId + " platform=" + platform +
-                    " reason=NO_OWNED_ROOT rawText=OMITTED")
+            if (shouldTraceRestored("NO_ROOT|" + packageName, 0))
+                InternalDiagnosticsLogger.logInteraction(this, "RESTORED_TREE_MISS",
+                    "capture=" + captureId + " platform=" + platform +
+                        " reason=NO_OWNED_ROOT rawText=OMITTED")
             return
         }
         var foundText = false
@@ -323,35 +335,39 @@ class OptimizedOfferEngine : AccessibilityService() {
             val fields = mutableListOf<UberOfferFieldResolver.Node>()
             traverseNodeTree(root, texts, 0, fields, winId)
             if (texts.isEmpty()) {
-                InternalDiagnosticsLogger.logInteraction(this, "RESTORED_TREE_MISS",
-                    "capture=" + captureId + " windowId=" + winId +
-                        " reason=NO_TEXT nodesMayExist=true childCount=" + root.childCount)
+                if (shouldTraceRestored("NO_TEXT|" + winId, root.childCount))
+                    InternalDiagnosticsLogger.logInteraction(this, "RESTORED_TREE_MISS",
+                        "capture=" + captureId + " windowId=" + winId +
+                            " reason=NO_TEXT nodesMayExist=true childCount=" + root.childCount)
                 return@forEach
             }
             foundText = true
             TipLedger.observe(this, platform, texts)
-            val payout = if (platform == "UBER" || platform == "UBER_EATS") {
-                UberOfferFieldResolver.resolve(fields).also { resolved ->
+            val resolved = if (platform == "UBER" || platform == "UBER_EATS")
+                UberOfferFieldResolver.resolve(fields) else null
+            val parsed = RestoredOfferParser.fromTree(platform, texts, resolved?.payout)
+            val fingerprint = texts.joinToString("\u001f").hashCode() * 31 +
+                parsed.reason.hashCode()
+            if (shouldTraceRestored("TREE|" + platform + "|" + winId, fingerprint)) {
+                if (resolved != null)
                     InternalDiagnosticsLogger.logInteraction(this, "UBER_FIELD_PROVENANCE",
                         "capture=" + captureId + " " + resolved.diagnostic())
-                }.payout
-            } else null
-            val parsed = RestoredOfferParser.fromTree(platform, texts, payout)
-            InternalDiagnosticsLogger.logInteraction(this, "RESTORED_TREE_PARSE",
-                "capture=" + captureId + " windowId=" + winId +
-                    " platform=" + platform + " " + parsed.diagnostic())
-            if (platform == "UBER" || platform == "LYFT") {
-                val report = OfferParserComparison.compare(platform, texts,
-                    parsed.offer != null, parsed.offer?.let {
-                        OfferParserComparison.ActiveSnapshot(
-                            it.payout, it.totalMinutes, it.totalMiles, it.hourlyRate)
-                    })
-                InternalDiagnosticsLogger.logInteraction(this, "PARSER_COMPARISON",
-                    report.diagnostic("LIVE_RESTORED", captureId, parsed.reason))
+                InternalDiagnosticsLogger.logInteraction(this, "RESTORED_TREE_PARSE",
+                    "capture=" + captureId + " windowId=" + winId +
+                        " platform=" + platform + " " + parsed.diagnostic())
+                if (platform == "UBER" || platform == "LYFT") {
+                    val report = OfferParserComparison.compare(platform, texts,
+                        parsed.offer != null, parsed.offer?.let {
+                            OfferParserComparison.ActiveSnapshot(
+                                it.payout, it.totalMinutes, it.totalMiles, it.hourlyRate)
+                        })
+                    InternalDiagnosticsLogger.logInteraction(this, "PARSER_COMPARISON",
+                        report.diagnostic("LIVE_RESTORED", captureId, parsed.reason))
+                }
             }
             parsed.offer?.let { publishRestoredCandidate(it, packageName, captureId) }
         }
-        if (!foundText) {
+        if (!foundText && shouldTraceRestored("PARSE_ABORT|" + packageName, 0)) {
             InternalDiagnosticsLogger.logInteraction(this, "PARSE_ABORT",
                 "capture=" + captureId + " reason=NO_ACCESSIBILITY_TEXT " +
                     "ocrFallback=ELIGIBLE")
@@ -368,8 +384,9 @@ class OptimizedOfferEngine : AccessibilityService() {
             candidate.tripMiles
         val now = android.os.SystemClock.elapsedRealtime()
         if (signature == lastOfferSignature && now - lastOfferTimestamp < 90_000L) {
-            InternalDiagnosticsLogger.logInteraction(this, "DEBOUNCE",
-                "capture=" + captureId + " suppressed=true source=" + candidate.source)
+            if (shouldTraceRestored("DEBOUNCE|" + signature, 0))
+                InternalDiagnosticsLogger.logInteraction(this, "DEBOUNCE",
+                    "capture=" + captureId + " suppressed=true source=" + candidate.source)
             return
         }
         lastOfferSignature = signature
@@ -478,8 +495,9 @@ class OptimizedOfferEngine : AccessibilityService() {
         if (!::prefs.isInitialized || !prefs.isPlatformEnabled("UBER")) return
         if (android.os.SystemClock.elapsedRealtime() - lastUberEventElapsed > 8_000L) return
         val parsed = RestoredOfferParser.fromUberOcr(ocr)
-        InternalDiagnosticsLogger.logInteraction(this, "RESTORED_OCR_PARSE",
-            "capture=" + captureId + " " + parsed.diagnostic())
+        if (shouldTraceRestored("OCR_RESULT", parsed.diagnostic().hashCode()))
+            InternalDiagnosticsLogger.logInteraction(this, "RESTORED_OCR_PARSE",
+                "capture=" + captureId + " " + parsed.diagnostic())
         parsed.offer?.let { publishRestoredCandidate(it, "com.ubercab.driver", captureId) }
     }
 
