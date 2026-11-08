@@ -24,6 +24,9 @@ The restored parser is authoritative for Uber/Lyft/Hich offer decisions. Existin
 - [ ] Verify visual-debug ON exports actual PNG; OFF saves no PNG while live OCR can still run.
 - [ ] Recheck Lyft/Hich on available captured fixtures and with live events as available.
 - [ ] Review battery/CPU and ensure no raw OCR or rider data appears in ordinary diagnostic text.
+- [ ] With Visual Debug Capture ON, observe ROLLING_STAGED before an offer, ROLLING_TRIGGER on an offer/window/visual change, ROLLING_FRAME_SAVED for both PRE_ROLL and POST_ROLL with shared capture IDs, and verify the exported ZIP contains readable PNGs.
+- [ ] Turn Visual Debug Capture OFF while a buffer is active: verify ROLLING_CLEARED, no further new PNGs, no automatic uploads, and normal transient live OCR remains available.
+- [ ] Confirm periods without an offer or visual trigger can leave zero PNGs without being counted as screenshot pipeline failures.
 
 ## Numeric reference cases
 - Uber Exclusive: $5.53; pickup 3 min/0.7 mi, trip 7 min/2.1 mi, total 10 min/2.8 mi, $33.18/hr.
@@ -34,8 +37,10 @@ The restored parser is authoritative for Uber/Lyft/Hich offer decisions. Existin
 ## Important limits
 - The old image first-dollar assumption is intentionally discarded; two distinct leg pairs are mandatory, not guessed.
 - Raw OCR is transient; raw accessibility trace persistence requires user-enabled Developer Inspection.
-- **Historical pre-roll/post-roll screenshot buffering was a developer OCR/parser test aid**, used to find the exact frame of a fleeting offer and compare it to recognized text and parsed fields. It is not a required live-parser acquisition tier or a release/merge gate. It has not been ported; current opt-in visual-debug export retains up to 100 PNGs.
-- If frame selection remains difficult during an opt-in development trial, restore a short, bounded pre/post capture buffer under Developer Diagnostics only. Correlate candidate frames, OCR output and parser decisions with capture IDs; retain images only with explicit user consent, and keep it off in normal operation.
+- **Restored rolling OCR diagnostic frame buffer:** with Visual Debug Capture explicitly on, Driverade stages compressed image previews in app memory for **8 seconds before** an interesting event and saves the next **10 seconds** after. Memory is bounded to **10 previews / 8 MB**, duplicate previews are suppressed, and remaining previews expire automatically. An Uber window transition, substantial visual change, likely OCR offer card, or recognized accessibility-tree offer can trigger promotion.
+- The opt-in rolling previews are used to find the correct offer frame, not as an additional authoritative live parser. **Live OCR still uses the original full-resolution screenshot**, while selected buffer previews are converted into the existing verifiable PNG export path. Existing exported PNG count remains capped at 100, and routine text diagnostics contain only capture IDs / reason codes, not raw pixels or OCR strings.
+- **Prior to an offer:** while an Uber-owned window is available and screenshot opt-in is enabled, timed captures create the pre-roll history. **After a trigger:** further frames are retained for 10 seconds. Turning the switch off immediately discards the in-memory buffer but does not delete already exported/saved files. An opt-in session without any trigger may legitimately produce no PNGs.
+- This is an opt-in diagnostic refinement, **not a live parser correctness or merge prerequisite**. The original Driverlogger3_4 retention configuration (8s/10s and grayscale change thresholds) informed it; new memory caps and PNG export are Driverade-specific.
 - Synthetic text OCR fixtures do not establish real screenshot recognition; the next live Uber offer is required.
 
 
