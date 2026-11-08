@@ -51,7 +51,22 @@ internal object SyntheticTestCatalog {
         Case("UberX Match real OCR", "UBER",
             "UberX\n\$6.74\n4.90 Verified\n5% Pro Perk included\n6 min • 2.4 mi\n" +
             "Beard Ave\n7 mins • 2.3 mi\nMatch",
-            "PASS", "NO_BOUND_PAYOUT", 6.74, 13.0, 4.7, "OCR")
+            "PASS", "NO_BOUND_PAYOUT", 6.74, 13.0, 4.7, "OCR"),
+        Case("Comfort actionable OCR", "UBER",
+            "Comfort\n\$20.80\n5 min • 1.2 mi\n20 min • 7.5 mi\nAccept",
+            "PASS", "NO_BOUND_PAYOUT", 20.80, 25.0, 8.7, "OCR"),
+        Case("Electric actionable OCR", "UBER",
+            "Electric\n\$18.95\n4 min • 1.0 mi\n14 min • 5.6 mi\nAccept",
+            "PASS", "NO_BOUND_PAYOUT", 18.95, 18.0, 6.6, "OCR"),
+        Case("Comfort Electric actionable OCR", "UBER",
+            "Comfort Electric\n\$23.40\n6 min • 1.5 mi\n14 min • 4.0 mi\nMatch",
+            "PASS", "NO_BOUND_PAYOUT", 23.40, 20.0, 5.5, "OCR"),
+        Case("Comfort Electric reservation preview (reject)", "UBER",
+            "Reservation request\nComfort Electric\n\$15.40\nPickup at 6:30pm\nView trip\nDismiss",
+            "GATE_REJECT", "NO_BOUND_PAYOUT", source = "OCR"),
+        Case("Unknown tier display context (reject)", "UBER",
+            "Unrecognized tier\n\$20.80\n5 min • 1.2 mi\n20 min • 7.5 mi\nAccept",
+            "GATE_REJECT", "NO_BOUND_PAYOUT", source = "OCR")
     )
 
     data class Outcome(
