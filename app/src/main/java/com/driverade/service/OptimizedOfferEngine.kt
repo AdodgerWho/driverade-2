@@ -264,7 +264,7 @@ class OptimizedOfferEngine : AccessibilityService() {
         if (resolvePlatform(pkgName) != null) logWindowVisibility(event, pkgName)
         if (pkgName == "com.ubercab.driver" && DeveloperInspection.isActive(this)) {
             try {
-                DeveloperInspection.observe(this, event, windows.orEmpty(), rootInActiveWindow)
+                DeveloperInspection.observe(this, event, captureId, windows.orEmpty(), rootInActiveWindow)
             } catch (e: Exception) {
                 InternalDiagnosticsLogger.logInteraction(this, "DEV_INSPECTION_ERROR",
                     "capture=$captureId reason=${e.javaClass.simpleName}")
