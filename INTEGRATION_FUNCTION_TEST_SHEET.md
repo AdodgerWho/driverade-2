@@ -70,3 +70,22 @@
 | S02 | Privacy and exported components | NOT RUN | | |
 
 **Gate:** Compile + basic diagnostics first; then on-device capture/export; then live Uber/Lyft acceptance and rejection; finally Semgrep, signing, and merge review.
+
+
+## November 8 PR #37 active test addendum (supersedes stale baseline assumptions only for this iteration)
+
+The original table above is the historical PR #20 plan, not the result ledger for PR #37. Keep it for regression coverage. For current execution use [DRIVERADE_NEXT_ITERATION_ROADMAP.md](DRIVERADE_NEXT_ITERATION_ROADMAP.md).
+
+| ID | Current PR #37 check | State | Evidence / limitation |
+|---|---|---|---|
+| B02 | In-place APK update, 10236 -> 10257 | OBSERVED PASS | Android reported app updated; app screens opened. Signing compatibility supported by successful install. |
+| B03 | Home / Insights / Settings startup | OBSERVED PASS (smoke only) | UI opened, Accessibility and Overlay shown enabled; no proof of all functions. |
+| O17 | 17-fixture synthetic injector | NOT RUN ON 10257 | Historical 12/12 summary belongs to 10236. |
+| O01 | Live actionable Uber offer -> parse -> alert | BLOCKED / NOT OBSERVED | New-build diagnostic segment had no offer parse/dispatch evidence. |
+| O02 | Map pill/history negative live checks | NOT VERIFIED | Existing rules require no false offer acceptance. |
+| D01 | PNG retained with explicit opt-in | NOT VERIFIED | New-build readiness said pngOptIn=false. |
+| D02 | Readable ZIP and rolling pre/post frames | NOT VERIFIED | Needs deliberate opt-in and artifact inspection. |
+| T01 | Tip classification accuracy | BLOCKED BY TRIP RECONCILIATION | Provisional deltas may include unobserved trips; do not call accuracy passed. |
+| S01 | CI/Semgrep at intended merge head | NOT VERIFIED FOR MERGE | Recheck after any code change and branch reconciliation. |
+
+Earnings-history parsing is a **deferred separate feature**: classify Lyft `incl. $X tip` as included; Uber labeled Tip / Pro Perk / Flash Incentive as distinct categories with headline inclusion still unverified. See [EARNINGS_HISTORY_RECONCILIATION_NOTES.md](EARNINGS_HISTORY_RECONCILIATION_NOTES.md). Avoid adding this logic to the live-offer acceptance path.
