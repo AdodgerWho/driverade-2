@@ -67,6 +67,13 @@ internal class RollingOcrFrameBuffer(
         return result
     }
 
+    /** Called by the service timer even if no further screenshots arrive. */
+    @Synchronized fun expire(nowMs: Long): Int {
+        val removed = prune(nowMs)
+        if (pending.isEmpty() && !postRollActive(nowMs)) previousSignature = null
+        return removed
+    }
+
     @Synchronized fun clear() {
         pending.clear()
         bytesInMemory = 0
