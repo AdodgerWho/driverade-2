@@ -12,7 +12,8 @@ internal object RestoredOfferParser {
     data class Candidate(
         val platform: String, val kind: String, val payout: Double,
         val pickupMinutes: Double, val pickupMiles: Double,
-        val tripMinutes: Double, val tripMiles: Double, val source: Source
+        val tripMinutes: Double, val tripMiles: Double, val source: Source,
+        val serviceType: String? = null
     ) {
         val totalMinutes get() = pickupMinutes + tripMinutes
         val totalMiles get() = pickupMiles + tripMiles
@@ -23,6 +24,7 @@ internal object RestoredOfferParser {
         fun diagnostic(): String {
             val o = offer ?: return "decision=REJECT reason=" + reason + " rawText=OMITTED"
             return "decision=ACCEPT source=" + o.source + " kind=" + o.kind +
+                " serviceType=" + (o.serviceType ?: "UNKNOWN") +
                 " payout=" + o.payout + " pickupMin=" + o.pickupMinutes +
                 " pickupMi=" + o.pickupMiles + " tripMin=" + o.tripMinutes +
                 " tripMi=" + o.tripMiles + " hourly=" +
@@ -46,17 +48,30 @@ internal object RestoredOfferParser {
     private val history = listOf("your earnings", "earnings activity", "net fare",
         "total earnings", "your balance", "cash out", "ride history", "daily stats",
         "trip in progress", "start navigation", "picking up", "waiting for rider")
-    private val uberx = Regex("""\bUber\s*X\b""", RegexOption.IGNORE_CASE)
+    // Ride service labels help scope OCR, but an UberX label is never an offer requirement.
+    // Longer variants come first so Comfort Electric stays one category.
+    private val uberServiceLabel = Regex(
+        """\b(?:Comfort\s+Electric|Uber\s+Comfort(?:\s+Electric)?|Comfort|Electric|Uber\s*XL|Uber\s*X(?:\s+Share)?|Uber\s+Black(?:\s+SUV)?|Black(?:\s+SUV)?|Uber\s+Green|Green|Uber\s+Pet|Uber\s+Share|Uber\s+Reserve|Uber\s+Premier|Premier|Uber\s+WAV|Uber\s+Assist)\b""",
+        RegexOption.IGNORE_CASE
+    )
+    internal fun uberServiceType(text: String): String? =
+        uberServiceLabel.findAll(text).lastOrNull()?.value
+            ?.trim()?.replace(Regex("""\s+"""), "_")?.uppercase(Locale.US)
 
     /** Call only with one verified application-owned window at a time. */
     fun fromTree(platform: String, texts: List<String>, verifiedPayout: Double? = null): Result =
         parse(platform, texts.joinToString("\n"), Source.TREE, verifiedPayout)
 
-    /** OCR includes other foreground apps; scope strictly to its last UberX label. */
-    fun fromUberOcr(text: String): Result {
-        val match = uberx.findAll(text).lastOrNull()
-            ?: return Result(null, "ocr_no_uberx_card_label")
-        val section = text.substring(match.range.first).take(1700)
+    /** Known ride labels delimit the card; trusted Uber windows can accept future tiers.
+     * Mixed-app display screenshots require a recognized service label for safety.
+     * Every path still requires action, unique payout and two complete trip legs.
+     */
+    fun fromUberOcr(text: String, captureSource: String = "DISPLAY"): Result {
+        val match = uberServiceLabel.findAll(text).lastOrNull()
+        if (match == null && captureSource != "WINDOW")
+            return Result(null, "ocr_no_service_context")
+        val section = if (match != null) text.substring(match.range.first).take(1700)
+            else text.takeLast(1700)
         return parse("UBER", section, Source.OCR, null)
     }
 
@@ -68,8 +83,6 @@ internal object RestoredOfferParser {
             "UBER", "UBER_EATS" -> {
                 if (!Regex("""\b(accept|match)\b""", RegexOption.IGNORE_CASE).containsMatchIn(text))
                     return Result(null, "missing_uber_action")
-                if (source == Source.OCR && !uberx.containsMatchIn(text))
-                    return Result(null, "missing_uberx_label")
                 when {
                     Regex("""\bmatch\b""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "match"
                     Regex("""\breservation\b|today\s+at\s+\d{1,2}""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "reservation"
@@ -116,6 +129,7 @@ internal object RestoredOfferParser {
         val tMi = pairs[1].groupValues[2].toDoubleOrNull() ?: return Result(null, "trip_miles_unreadable")
         if (pMin !in 1.0..300.0 || tMin !in 1.0..300.0 ||
             pMi !in 0.1..300.0 || tMi !in 0.1..300.0) return Result(null, "legs_out_of_range")
-        return Result(Candidate(platform, kind, payout, pMin, pMi, tMin, tMi, source), "complete")
+        return Result(Candidate(platform, kind, payout, pMin, pMi, tMin, tMi, source,
+            if (platform.startsWith("UBER")) uberServiceType(text) else null), "complete")
     }
 }
