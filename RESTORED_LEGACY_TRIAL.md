@@ -101,3 +101,20 @@ The owner installed the permanently signed PR #37 test build as an **in-place up
 5. Before any merge, check CI, Semgrep, current-main divergence, signing continuity and remaining live acceptance criteria.
 
 **Deferred earnings reconciliation:** See [EARNINGS_HISTORY_RECONCILIATION_NOTES.md](EARNINGS_HISTORY_RECONCILIATION_NOTES.md) and [DRIVERADE_NEXT_ITERATION_ROADMAP.md](DRIVERADE_NEXT_ITERATION_ROADMAP.md). The dashboard's observed potential-tip count is not an accuracy pass: running-total changes can include unmatched completed-trip earnings. Validate tip attribution only after completed-trip payout linkage and labeled history parsing. Do not infer tips from offer-to-final payout differences.
+
+
+## November 8 — re-exported diagnostics review (uploaded 1794176459326 / private 1794176464809)
+
+**Evidence classification:** text export is cumulative across build IDs; private inspection JSONL contains 79 older-build captures only. Raw private inspection JSONL stays out of the repository.
+
+- `[BUILD_ID]` at 10:18:50: **10236** (`b5d971a3e5c86219e331de4268f2b86bf2722c9f`); `[BUILD_ID]` at 16:04:55: **10257** (`64c196672fc321e2964ddd5d65ee9e3559a04641`). Never combine counters across this boundary.
+- The 10236 segment contains **12 synthetic fixture results** and `SYNTHETIC_BATCH_SUMMARY total=12 expected=12 unexpected=0`. **Not** the 17-fixture 10257 run.
+- The new 10257 segment contains **11 `VISUAL_DEBUG_OCR_COMPLETED` / `UBER_OCR_DIAGNOSTIC` / `RESTORED_OCR_PARSE`** events, **72 `RESTORED_TREE_PARSE`**, and **465 `RESTORED_ACQUISITION`** entries. The OCR reject reasons are `missing_uber_action` (6), `ocr_no_service_context` (4), and `history_or_navigation` (1). This demonstrates the revised service/action diagnostic path executes; no actionable offer is established.
+- Current-build OCR examples show `serviceType=UBERX` with `actionPresent=false` and multiple amounts/minute/mile candidate counts. Do **not** loosen action or provenance gates based only on these partial observations.
+- **Zero** `SYNTHETIC_TEST_RESULT`, `SYNTHETIC_BATCH_SUMMARY`, `PARSE_RESULT`, or `ALERT_DISPATCH` events in the 10257 segment.
+- A 10257 `TIP_OBSERVED` record reports Lyft explicit tip **$11.40**, provisional. This is evidence of detection, **not** evidence of ledger accuracy or trip reconciliation.
+- 10257 `VISUAL_DEBUG_EXPORT_PRECHECK` reports `enabled=false imageCount=0`; absence of retained PNG is expected with persistence disabled.
+- Private inspection JSONL: **79 captures** from approximately 10:23 to 10:36 (before the 16:04:55 10257 startup); not a current-build private hierarchy inspection.
+- **Next test:** run 17-fixture injector on 10257; collect an actual offer with capture-ID correlation and opt-in PNG/ZIP if needed. Avoid another redundant text export unless new activity occurs.
+
+Source filenames are evidence identifiers only; do not copy private raw logs/screenshots into this public branch.
