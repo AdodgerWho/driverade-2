@@ -459,6 +459,7 @@ class OptimizedOfferEngine : AccessibilityService() {
     private val restoredTick = object : Runnable {
         override fun run() {
             try {
+                visualDebug?.expireRollingFrames()
                 val power = getSystemService(POWER_SERVICE) as android.os.PowerManager
                 if (power.isInteractive && ::prefs.isInitialized) {
                     val present = windows.orEmpty().mapNotNull { w ->
