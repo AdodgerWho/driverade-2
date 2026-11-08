@@ -14,6 +14,18 @@ Preserve unconstrained exploration while ensuring changes to the working applica
 
 A task may return to DISCOVER after a failed test; that is not a failure of the process.
 
+## Diagnostic philosophy: development clarity, production privacy
+
+**Security and privacy serve different functions.** During development and owner-authorized testing, the diagnostic system is primarily a **truth-finding instrument**. Do not preemptively remove the event detail, intermediate data or source provenance needed to determine where a real failure occurred. Security still matters: protect access to captured material, prevent unwanted transmission, and avoid capturing secrets that are not needed for diagnosis. But do not treat the production data-minimization policy as a requirement to blind a development build.
+
+- **Development/forensic build:** Allow explicit, temporary high-fidelity capture: event and window metadata, structured node trees or source fields, transient screenshots/OCR inputs and outputs, raw-to-normalized transformations, gate decisions, exception chains, timing and app lifecycle. Record both what entered and what left each stage, with a shared trace/capture ID. Broad observation is permissible while discovering unknown variables, within device and OS capabilities and with a visible owner-controlled session. Preserve evidence first, filter analytically second.
+- **Research narrowing:** Once a signal is identified, annotate what it rules in/out and reduce sampling or capture scope. Retain the ability to temporarily return to full-fidelity capture when a new unexplained failure appears. Don't permanently erase a field merely because it looked irrelevant in one trial.
+- **Production build:** Default to privacy-preserving, low-volume summaries, minimized/derived values, short retention and optional diagnostic export. No hidden raw tracing or automatic upload. Only include a separately gated, explicitly authorized advanced diagnostic capability if needed for support; do not allow production flags to silently enable development capture.
+- **Security guardrails for both:** Developer capture stays device-private and access-controlled; sessions are conspicuous, time-bounded and can be stopped/cleared. Never upload raw third-party content, credentials, signing keys, authentication tokens or sensitive traces to public GitHub/CI or automatically to cloud services. Use restricted private export when the owner deliberately shares diagnostics; label raw exports clearly, consider temporary retention and secure deletion. Use **build-variant enforcement** to prevent accidental debug instrumentation in ordinary production distributions.
+- **Diagnostic integrity:** Clarity also requires reliable timestamps, source identity, causal trace IDs, capture gaps/dropped-event counts and explicit **not observed** results. An instrumentation system that silently drops events is itself a debugging failure. Confirm trace capture, persistence and export separately.
+
+**Standalone extraction candidate:** See [Reusable Diagnostics Engine concept](REUSABLE_DIAGNOSTICS_ENGINE_CONCEPT.md). This is a proposed independent development tool / library, not an authorization to create a repository or wire it into Driverade or the separate personal assistant.
+
 ## Minimal change/evidence contract
 
 For every behavior-changing PR, state in its description or linked verification record:
@@ -58,7 +70,7 @@ Use capture/request IDs to follow: **external source → event/window acquisitio
 
 For screenshots, distinguish `capture succeeded`, `local OCR ran`, `PNG persisted`, `ZIP export contains readable image`, and `file was actually shared`; one does not imply another. Inspect false positives from pill totals, wallet/history figures, unrelated dollar labels, and duplicate events. Preserve diagnosis of background/foreground and app-owned windows.
 
-Diagnostics stay **opt-in, local/private, bounded, minimal and reversible** as required. Do not store raw rider information, precise routes, unredacted accessibility data, private keys or secret parameters in this public repository or PR comments.
+**Development captures:** explicit and bounded but not needlessly redacted at collection time when detail is required to troubleshoot; keep raw evidence in controlled local/private storage. **Production captures:** minimized, privacy-preserving and opt-in where appropriate. Never store raw rider information, precise routes, unredacted accessibility data, private keys or secret parameters in this public repository or PR comments.
 
 ## Promotion and stopping rules
 
