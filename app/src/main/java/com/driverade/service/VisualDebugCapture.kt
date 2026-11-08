@@ -45,13 +45,13 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
             (GuidedSettingsState.isActive(service) &&
                 (pkg == "com.android.settings" || pkg == "com.google.android.projection.gearhead"))
         if (!target) return
-        capture(pkg, captureId, "EVENT")
+        capture(pkg, captureId, "EVENT", event.windowId)
     }
 
     /** Periodic recovery from missed / too-early Uber accessibility events. */
     fun observeTimedUber(captureId: String) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
-            capture("com.ubercab.driver", captureId, "TIMED")
+            capture("com.ubercab.driver", captureId, "TIMED", -1)
     }
 
     private var uberOcrListener: ((String, String) -> Unit)? = null
@@ -63,46 +63,78 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
         captureExecutor.shutdownNow()
     }
 
-    private fun capture(pkg: String, captureId: String, trigger: String) {
+    /**
+     * API 34+ prefers a specific Uber window. Older devices and invalidated
+     * windows can fall back to display capture with an explicit provenance tag.
+     * Never retry a secure-window or access-denied failure via display capture.
+     */
+    private fun capture(pkg: String, captureId: String, trigger: String, eventWindowId: Int) {
         val now = SystemClock.elapsedRealtime()
         if (now - lastCaptureElapsed < intervalMs || !busy.compareAndSet(false, true)) return
         lastCaptureElapsed = now
         val saveDebug = isEnabled()
+        val chosen = if (pkg == "com.ubercab.driver" && Build.VERSION.SDK_INT >= 34) {
+            val list = runCatching { service.windows.orEmpty() }.getOrDefault(emptyList())
+            list.firstOrNull { it.id == eventWindowId }
+                ?: list.filter {
+                    runCatching { it.root?.packageName?.toString() == pkg }.getOrDefault(false)
+                }.maxByOrNull { it.layer }
+        } else null
         log("REQUESTED", "capture=" + captureId + " package=" + pkg +
-            " trigger=" + trigger + " savePng=" + saveDebug)
-        try {
-            service.takeScreenshot(Display.DEFAULT_DISPLAY, captureExecutor,
-                object : AccessibilityService.TakeScreenshotCallback {
-                    override fun onFailure(errorCode: Int) {
-                        log("CAPTURE_FAILED", "capture=" + captureId + " package=" + pkg + " code=" + errorCode)
-                        busy.set(false)
-                    }
-                    override fun onSuccess(result: AccessibilityService.ScreenshotResult) {
-                        var bitmap: Bitmap? = null
+            " trigger=" + trigger + " savePng=" + saveDebug +
+            " targetWindow=" + (chosen?.id ?: "NA"))
+        fun callback(source: String): AccessibilityService.TakeScreenshotCallback =
+            object : AccessibilityService.TakeScreenshotCallback {
+                override fun onFailure(errorCode: Int) {
+                    log("CAPTURE_FAILED", "capture=" + captureId + " source=" + source +
+                        " package=" + pkg + " code=" + errorCode)
+                    if (source == "WINDOW" &&
+                        (errorCode == AccessibilityService.ERROR_TAKE_SCREENSHOT_INVALID_WINDOW ||
+                         errorCode == AccessibilityService.ERROR_TAKE_SCREENSHOT_INTERNAL_ERROR)) {
+                        log("WINDOW_FALLBACK", "capture=" + captureId +
+                            " reason=WINDOW_UNAVAILABLE trying=DISPLAY")
                         try {
-                            val buffer = result.hardwareBuffer
-                            try {
-                                val hardware = Bitmap.wrapHardwareBuffer(
-                                    buffer, result.colorSpace ?: ColorSpace.get(ColorSpace.Named.SRGB))
-                                    ?: error("Hardware buffer could not be mapped")
-                                try { bitmap = hardware.copy(Bitmap.Config.ARGB_8888, false) }
-                                finally { hardware.recycle() }
-                            } finally { buffer.close() }
-                            val image = bitmap ?: error("Bitmap copy returned null")
-                            log("CAPTURE_SUCCESS", "capture=" + captureId +
-                                " width=" + image.width + " height=" + image.height +
-                                " source=DISPLAY")
-                            if (saveDebug) saveAndVerify(image, pkg, captureId)
-                            if (pkg == "com.ubercab.driver") inspectUberImage(image, captureId)
-                        } catch (error: Exception) {
-                            log("CAPTURE_PROCESS_FAILED", "capture=" + captureId +
-                                " reason=" + error.javaClass.simpleName)
-                        } finally {
-                            bitmap?.recycle()
+                            service.takeScreenshot(Display.DEFAULT_DISPLAY,
+                                captureExecutor, callback("DISPLAY_FALLBACK"))
+                        } catch (e: Exception) {
+                            log("CAPTURE_FAILED", "capture=" + captureId +
+                                " source=DISPLAY_FALLBACK reason=" + e.javaClass.simpleName)
                             busy.set(false)
                         }
+                    } else busy.set(false)
+                }
+                override fun onSuccess(result: AccessibilityService.ScreenshotResult) {
+                    var bitmap: Bitmap? = null
+                    try {
+                        val buffer = result.hardwareBuffer
+                        try {
+                            val hardware = Bitmap.wrapHardwareBuffer(
+                                buffer, result.colorSpace ?: ColorSpace.get(ColorSpace.Named.SRGB))
+                                ?: error("Hardware buffer could not be mapped")
+                            try { bitmap = hardware.copy(Bitmap.Config.ARGB_8888, false) }
+                            finally { hardware.recycle() }
+                        } finally { buffer.close() }
+                        val image = bitmap ?: error("Bitmap copy returned null")
+                        log("CAPTURE_SUCCESS", "capture=" + captureId +
+                            " width=" + image.width + " height=" + image.height +
+                            " source=" + source + " windowId=" + (chosen?.id ?: "NA"))
+                        if (saveDebug) saveAndVerify(image, pkg, captureId)
+                        if (pkg == "com.ubercab.driver") inspectUberImage(image, captureId)
+                    } catch (error: Exception) {
+                        log("CAPTURE_PROCESS_FAILED", "capture=" + captureId +
+                            " reason=" + error.javaClass.simpleName)
+                    } finally {
+                        bitmap?.recycle()
+                        busy.set(false)
                     }
-                })
+                }
+            }
+        try {
+            if (chosen != null) {
+                service.takeScreenshotOfWindow(chosen.id, captureExecutor, callback("WINDOW"))
+            } else {
+                service.takeScreenshot(Display.DEFAULT_DISPLAY, captureExecutor, callback("DISPLAY"))
+            }
         } catch (error: Exception) {
             log("REQUEST_FAILED", "capture=" + captureId +
                 " reason=" + error.javaClass.simpleName)
@@ -111,9 +143,9 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
     }
 
     /**
-     * Optional local-only OCR for diagnostic screenshots. This is a display capture,
-     * NOT a verified Uber window crop. No OCR strings are persisted or uploaded.
-     * The OCR candidate is never promoted to OfferEvaluation or alert dispatch.
+     * OCR input is transient and app-local. It may originate from a window
+     * screenshot or (if unavailable) the display. The parser must enforce
+     * its own UberX/action/complete-leg checks before publishing an offer.
      */
     private fun inspectUberImage(bitmap: Bitmap, captureId: String) {
         val copy = try { bitmap.copy(Bitmap.Config.ARGB_8888, false) } catch (_: Exception) { null }
