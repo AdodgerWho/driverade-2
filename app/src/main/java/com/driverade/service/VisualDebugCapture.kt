@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ColorSpace
+import android.graphics.Rect
 import android.os.Build
 import android.os.SystemClock
 import android.view.Display
@@ -241,8 +242,8 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
         }
     }
 
-    private var uberOcrListener: ((String, String) -> Unit)? = null
-    fun setUberOcrListener(listener: (String, String) -> Unit) {
+    private var uberOcrListener: ((String, String, String) -> Unit)? = null
+    fun setUberOcrListener(listener: (String, String, String) -> Unit) {
         uberOcrListener = listener
     }
     fun close() {
@@ -263,11 +264,17 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
         val saveDebug = isEnabled()
         val chosen = if (pkg == "com.ubercab.driver" && Build.VERSION.SDK_INT >= 34) {
             val list = runCatching { service.windows.orEmpty() }.getOrDefault(emptyList())
-            list.firstOrNull { it.id == eventWindowId &&
-                runCatching { it.root?.packageName?.toString() == pkg }.getOrDefault(false) }
-                ?: list.filter {
-                    runCatching { it.root?.packageName?.toString() == pkg }.getOrDefault(false)
-                }.maxByOrNull { it.layer }
+            val owned = list.filter {
+                runCatching { it.root?.packageName?.toString() == pkg }.getOrDefault(false)
+            }
+            val frames = owned.map { w ->
+                val rect = Rect()
+                runCatching { w.getBoundsInScreen(rect) }
+                UberWindowSelection.Frame(w.id,
+                    rect.width().coerceAtLeast(0).toLong() * rect.height().coerceAtLeast(0))
+            }
+            val chosenId = UberWindowSelection.select(eventWindowId, frames)
+            owned.firstOrNull { it.id == chosenId }
         } else null
         log("REQUESTED", "capture=" + captureId + " package=" + pkg +
             " trigger=" + trigger + " savePng=" + saveDebug +
@@ -367,11 +374,11 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
                         " textBlocks=" + result.textBlocks.size +
                         " listenerConnected=" + (uberOcrListener != null) +
                         " rawText=OMITTED")
-                    val summary = UberScreenOcrDiagnostics.inspect(result.text)
+                    val summary = UberScreenOcrDiagnostics.inspect(result.text, captureSource)
                     InternalDiagnosticsLogger.logInteraction(service, "UBER_OCR_DIAGNOSTIC",
                         "capture=" + captureId + " " + summary.diagnostic(captureSource))
                     if (summary.likelyOfferCard) signalRollingTrigger(captureId, "OCR_OFFER_CANDIDATE")
-                    uberOcrListener?.invoke(captureId, result.text)
+                    uberOcrListener?.invoke(captureId, result.text, captureSource)
                 }
                 .addOnFailureListener { error ->
                     log("OCR_FAILED", "capture=$captureId reason=${error.javaClass.simpleName}")
