@@ -230,6 +230,10 @@ class OptimizedOfferEngine : AccessibilityService() {
         }
         testReceiverRegistered = true
         InternalDiagnosticsLogger.initializeSession(this, prefs)
+        InternalDiagnosticsLogger.logInteraction(this, "RESTORED_DIAGNOSTIC_READY",
+            "paths=EVENT_TREE,TIMED_TREE,UBER_WINDOW_OR_DISPLAY_OCR " +
+                "captureCorrelation=ENABLED pngOptIn=${visualDebug?.isEnabled() == true} " +
+                "privateInspection=${DeveloperInspection.isActive(this)} rawText=OMITTED")
         InternalDiagnosticsLogger.logInteraction(this, "SERVICE", "OptimizedOfferEngine connected successfully.")
     }
 
@@ -298,7 +302,8 @@ class OptimizedOfferEngine : AccessibilityService() {
     /** Old Driverlogger's event + timed multi-window tree collector. */
     private fun processRestoredTrees(
         platform: String, packageName: String, captureId: String,
-        eventSource: AccessibilityNodeInfo?, eventWindowId: Int
+        eventSource: AccessibilityNodeInfo?, eventWindowId: Int,
+        acquisition: String = "EVENT"
     ) {
         val frames = linkedMapOf<Int, AccessibilityNodeInfo>()
         try {
@@ -322,10 +327,23 @@ class OptimizedOfferEngine : AccessibilityService() {
                 "capture=" + captureId + " exception=" + e.javaClass.simpleName)
         }
 
+        // Correlate an event or timer with the actual app-owned windows available.
+        // Metadata only: do not persist window text or raw node contents.
+        val sourceOwned = eventSource?.packageName?.toString() == packageName
+        val windowFingerprint = frames.size * 31 + (if (sourceOwned) 1 else 0)
+        if (shouldTraceRestored("ACQUISITION|" + acquisition + "|" + packageName,
+                windowFingerprint)) {
+            InternalDiagnosticsLogger.logInteraction(this, "RESTORED_ACQUISITION",
+                "capture=" + captureId + " trigger=" + acquisition +
+                    " platform=" + platform + " eventWindow=" + eventWindowId +
+                    " eventSourceOwned=" + sourceOwned + " ownedRoots=" + frames.size +
+                    " rawText=OMITTED")
+        }
+
         if (frames.isEmpty()) {
             if (shouldTraceRestored("NO_ROOT|" + packageName, 0))
                 InternalDiagnosticsLogger.logInteraction(this, "RESTORED_TREE_MISS",
-                    "capture=" + captureId + " platform=" + platform +
+                    "capture=" + captureId + " trigger=" + acquisition + " platform=" + platform +
                         " reason=NO_OWNED_ROOT rawText=OMITTED")
             return
         }
@@ -337,7 +355,7 @@ class OptimizedOfferEngine : AccessibilityService() {
             if (texts.isEmpty()) {
                 if (shouldTraceRestored("NO_TEXT|" + winId, root.childCount))
                     InternalDiagnosticsLogger.logInteraction(this, "RESTORED_TREE_MISS",
-                        "capture=" + captureId + " windowId=" + winId +
+                        "capture=" + captureId + " trigger=" + acquisition + " windowId=" + winId +
                             " reason=NO_TEXT nodesMayExist=true childCount=" + root.childCount)
                 return@forEach
             }
@@ -353,8 +371,8 @@ class OptimizedOfferEngine : AccessibilityService() {
                     InternalDiagnosticsLogger.logInteraction(this, "UBER_FIELD_PROVENANCE",
                         "capture=" + captureId + " " + resolved.diagnostic())
                 InternalDiagnosticsLogger.logInteraction(this, "RESTORED_TREE_PARSE",
-                    "capture=" + captureId + " windowId=" + winId +
-                        " platform=" + platform + " " + parsed.diagnostic())
+                    "capture=" + captureId + " trigger=" + acquisition + " windowId=" + winId +
+                        " platform=" + platform + " textFields=" + texts.size + " " + parsed.diagnostic())
                 if (platform == "UBER" || platform == "LYFT") {
                     val report = OfferParserComparison.compare(platform, texts,
                         parsed.offer != null, parsed.offer?.let {
@@ -362,15 +380,15 @@ class OptimizedOfferEngine : AccessibilityService() {
                                 it.payout, it.totalMinutes, it.totalMiles, it.hourlyRate)
                         })
                     InternalDiagnosticsLogger.logInteraction(this, "PARSER_COMPARISON",
-                        report.diagnostic("LIVE_RESTORED", captureId, parsed.reason))
+                        report.diagnostic("LIVE_RESTORED_" + acquisition, captureId, parsed.reason))
                 }
             }
             parsed.offer?.let { publishRestoredCandidate(it, packageName, captureId) }
         }
         if (!foundText && shouldTraceRestored("PARSE_ABORT|" + packageName, 0)) {
             InternalDiagnosticsLogger.logInteraction(this, "PARSE_ABORT",
-                "capture=" + captureId + " reason=NO_ACCESSIBILITY_TEXT " +
-                    "ocrFallback=ELIGIBLE")
+                "capture=" + captureId + " trigger=" + acquisition +
+                    " reason=NO_ACCESSIBILITY_TEXT ocrFallback=ELIGIBLE")
         }
     }
 
@@ -444,7 +462,7 @@ class OptimizedOfferEngine : AccessibilityService() {
                         val platform = PACKAGE_PLATFORM_MAP[pkg] ?: return@forEach
                         if (prefs.isPlatformEnabled(platform)) {
                             val id = "timed-" + System.currentTimeMillis()
-                            processRestoredTrees(platform, pkg, id, null, -1)
+                            processRestoredTrees(platform, pkg, id, null, -1, "TIMED")
                         }
                     }
                     val recentlyTriggered =
@@ -456,7 +474,17 @@ class OptimizedOfferEngine : AccessibilityService() {
                     }
                     if ((recentlyTriggered || unreadableUberOverlay) &&
                         prefs.isPlatformEnabled("UBER")) {
-                        visualDebug?.observeTimedUber("timed-" + System.currentTimeMillis())
+                        val ocrCaptureId = "timed-" + System.currentTimeMillis()
+                        if (shouldTraceRestored("TIMED_OCR_TRIGGER", 
+                                (if (recentlyTriggered) 1 else 0) +
+                                    (if (unreadableUberOverlay) 2 else 0))) {
+                            InternalDiagnosticsLogger.logInteraction(this@OptimizedOfferEngine,
+                                "RESTORED_TIMED_OCR_TRIGGER",
+                                "capture=" + ocrCaptureId + " recentEvent=" + recentlyTriggered +
+                                    " blankOverlay=" + unreadableUberOverlay +
+                                    " pngOptIn=" + (visualDebug?.isEnabled() == true))
+                        }
+                        visualDebug?.observeTimedUber(ocrCaptureId)
                     }
                 }
             } catch (e: Exception) {
@@ -492,12 +520,25 @@ class OptimizedOfferEngine : AccessibilityService() {
     }
 
     private fun handleRestoredOcr(captureId: String, ocr: String) {
-        if (!::prefs.isInitialized || !prefs.isPlatformEnabled("UBER")) return
-        if (android.os.SystemClock.elapsedRealtime() - lastUberEventElapsed > 8_000L) return
+        if (!::prefs.isInitialized) {
+            InternalDiagnosticsLogger.logInteraction(this, "RESTORED_OCR_SKIPPED",
+                "capture=" + captureId + " reason=PREFERENCES_NOT_READY")
+            return
+        }
+        if (!prefs.isPlatformEnabled("UBER")) {
+            InternalDiagnosticsLogger.logInteraction(this, "RESTORED_OCR_SKIPPED",
+                "capture=" + captureId + " reason=UBER_DISABLED")
+            return
+        }
+        if (android.os.SystemClock.elapsedRealtime() - lastUberEventElapsed > 8_000L) {
+            InternalDiagnosticsLogger.logInteraction(this, "RESTORED_OCR_SKIPPED",
+                "capture=" + captureId + " reason=EVENT_OLDER_THAN_8_SECONDS")
+            return
+        }
         val parsed = RestoredOfferParser.fromUberOcr(ocr)
-        if (shouldTraceRestored("OCR_RESULT", parsed.diagnostic().hashCode()))
-            InternalDiagnosticsLogger.logInteraction(this, "RESTORED_OCR_PARSE",
-                "capture=" + captureId + " " + parsed.diagnostic())
+        // Record every OCR decision so each completed image has a matching parser outcome.
+        InternalDiagnosticsLogger.logInteraction(this, "RESTORED_OCR_PARSE",
+            "capture=" + captureId + " " + parsed.diagnostic())
         parsed.offer?.let { publishRestoredCandidate(it, "com.ubercab.driver", captureId) }
     }
 
