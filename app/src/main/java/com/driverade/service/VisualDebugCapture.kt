@@ -29,6 +29,7 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
     private val captureExecutor = Executors.newSingleThreadExecutor()
     private val rolling = RollingOcrFrameBuffer()
     private var lastRollingTrigger = -100_000L
+    private var postRollDiagnosticChecks = 0
     private var lastCaptureElapsed = 0L
     private var serial = 0L
     private val intervalMs = 1500L
@@ -104,6 +105,7 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
         // Don't extend the ten-second post-roll indefinitely on repeated OCR/events.
         if (now - lastRollingTrigger < 8_000L && rolling.postRollActive(now)) return
         lastRollingTrigger = now
+        postRollDiagnosticChecks = 0
         val recent = rolling.promote(now)
         log("ROLLING_TRIGGER", "capture=" + captureId + " reason=" + reason +
             " preRollFrames=" + recent.size + " preRollMs=8000 postRollMs=10000 rawText=OMITTED")
@@ -115,7 +117,7 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
             rolling.clear()
             return
         }
-        frames.forEach { f ->
+        frames.forEachIndexed { index, f ->
             val bitmap = BitmapFactory.decodeByteArray(f.jpeg, 0, f.jpeg.size)
             if (bitmap == null) {
                 log("ROLLING_FRAME_FAILED", "capture=" + f.captureId + " reason=INVALID_BUFFER")
@@ -126,6 +128,16 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
                         " phase=" + phase + " source=" + f.source +
                         " ageMs=" + (SystemClock.elapsedRealtime() - f.timestampMs) +
                         " rawText=OMITTED")
+                    // Only a small sample is rechecked by ML Kit. This is read-only:
+                    // selected historical OCR never changes live offer/alert decisions.
+                    val diagnosticOcr = if (phase == "PRE_ROLL") {
+                        index >= frames.size - 2
+                    } else {
+                        postRollDiagnosticChecks++ % 3 == 0 &&
+                            postRollDiagnosticChecks <= 6
+                    }
+                    if (diagnosticOcr) inspectBufferedFrameForDiagnostics(bitmap,
+                        f.captureId, phase, f.source)
                 } catch (e: Exception) {
                     log("ROLLING_FRAME_FAILED", "capture=" + f.captureId +
                         " reason=" + e.javaClass.simpleName)
@@ -133,6 +145,39 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
                     bitmap.recycle()
                 }
             }
+        }
+    }
+
+    /**
+     * Diagnostic-only OCR on selected pre/post frames to compare recognition
+     * against the live screenshot frame. Never forwarded to the offer parser.
+     */
+    private fun inspectBufferedFrameForDiagnostics(bitmap: Bitmap, captureId: String,
+                                                   phase: String, source: String) {
+        if (!isEnabled()) return
+        val copy = runCatching { bitmap.copy(Bitmap.Config.ARGB_8888, false) }.getOrNull()
+            ?: return
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        try {
+            recognizer.process(InputImage.fromBitmap(copy, 0))
+                .addOnSuccessListener { result ->
+                    val summary = UberScreenOcrDiagnostics.inspect(result.text)
+                    log("ROLLING_OCR_FRAME", "capture=" + captureId + " phase=" + phase +
+                        " " + summary.diagnostic(source) + " diagnosticOnly=true")
+                }
+                .addOnFailureListener { error ->
+                    log("ROLLING_OCR_FAILED", "capture=" + captureId +
+                        " phase=" + phase + " reason=" + error.javaClass.simpleName)
+                }
+                .addOnCompleteListener {
+                    copy.recycle()
+                    recognizer.close()
+                }
+        } catch (e: Exception) {
+            copy.recycle()
+            recognizer.close()
+            log("ROLLING_OCR_FAILED", "capture=" + captureId +
+                " phase=" + phase + " reason=" + e.javaClass.simpleName)
         }
     }
 
