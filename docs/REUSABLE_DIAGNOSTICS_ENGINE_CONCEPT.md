@@ -1,6 +1,14 @@
 # Reusable Diagnostics Engine — extraction concept
 
-**Status:** DESIGN CANDIDATE (not implemented). **Source inspiration:** Driverade Android diagnostics. **Owner intent as of 2026-11-08:** Optimize **development diagnostics for clarity**, rather than treating privacy minimization as the diagnostic tool's defining purpose. Keep security controls to prevent unwanted exposure. Production clients must separately enforce privacy-by-design defaults.
+**Status:** ADDENDUM TO EXISTING EXTRACTION BLUEPRINT — not a newly discovered project or an independently implemented library. **Owner intent reaffirmed 2026-11-08:** Optimize **development diagnostics for clarity** while protecting diagnostic access; production clients must separately enforce privacy-minded defaults.
+
+## Existing source of truth and continuity
+
+- **Original reusable diagnostic-engine blueprint:** [PR #21 — `blueprints/diagnostics/README.md`](https://github.com/AdodgerWho/driverade-2/blob/blueprints/reusable-engine-catalog/blueprints/diagnostics/README.md). It inventories `InternalDiagnosticsLogger.kt`, `DiagnosticSqliteStore.kt`, `FeatureDiagnostics.kt`, and `BugReportManager.kt`; gives proposed sink/store/probe/export interfaces; describes coupling, known flaws, and extraction tests.
+- **Original catalog:** [reusable engine blueprints](https://github.com/AdodgerWho/driverade-2/tree/blueprints/reusable-engine-catalog/blueprints), preserved on `blueprints/reusable-engine-catalog`, with source snapshot and extraction rules. The blueprint explicitly says standalone extraction and end-to-end verification are **pending**.
+- **Earlier archive:** [Code Vault diagnostics notes](https://github.com/AdodgerWho/driverade-2/blob/archive/code-vault/diagnostics/README.md) already articulate **broad development diagnostics** and **opt-in production reporting**.
+- **Relationship of this document:** A 2026-11-08 clarification and potential next-phase extension of that **existing** work, emphasizing signal fidelity, causal tracing and a standalone inspection UI. Do not start a second engine from scratch, treat PR #36 as an extraction implementation, or overwrite prior blueprints. When extracting later, reconcile against the current Driverade source, not a historical snapshot alone.
+
 
 ## Objective
 
