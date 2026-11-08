@@ -2,6 +2,8 @@
 
 This policy applies to coding assistants and human changes in this repository.
 
+Use [the engineering evidence standard](docs/ENGINEERING_EVIDENCE_STANDARD.md) to separate **DISCOVER → ENGINEER → VERIFY**, define the smallest falsifiable change, and track evidence without confusing synthetic PASS with live behavior. Use [the PR template](.github/pull_request_template.md) for scoped test status and the dated [PR verification ledger](docs/PR_VERIFICATION_LEDGER.md) for dependencies and remaining unknowns. These documents complement, rather than waive, the release, privacy, consent, and recovery rules below.
+
 ## Stable and experimental branches
 
 - `main` is the last fully verified integration baseline. Do not add experimental or partially tested behavior directly.
