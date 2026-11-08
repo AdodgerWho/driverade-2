@@ -62,6 +62,15 @@ class RollingOcrFrameBufferTest {
         assertFalse(ring.postRollActive(4_001L))
     }
 
+    @Test fun expiresScreenshotsWithoutReceivingAnotherFrame() {
+        val ring = RollingOcrFrameBuffer()
+        ring.add(frame("transient", 1_000L, 20))
+        assertEquals(1, ring.expire(9_001L))
+        assertEquals(0, ring.pendingCount)
+        assertEquals(0, ring.pendingBytes)
+        assertEquals(null, ring.add(frame("new-session", 15_000L, 20)).meanDifference)
+    }
+
     @Test fun visualDifferenceIsAvailableForOfferTrigger() {
         val ring = RollingOcrFrameBuffer()
         assertEquals(null, ring.add(frame("initial", 1_000L, 5)).meanDifference)
