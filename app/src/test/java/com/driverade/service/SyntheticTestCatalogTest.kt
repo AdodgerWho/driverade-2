@@ -17,10 +17,15 @@ class SyntheticTestCatalogTest {
 
     @Test fun comparisonSummaryChecksBothStatusAndFieldBinding() {
         val test = SyntheticTestCatalog.presets.first { it.expectedProvenance == "ACCEPT_CONTROL" }
-        val correct = SyntheticTestCatalog.Outcome(test, "PASS", "ACCEPT_CONTROL", "details")
-        val wrongBinding = SyntheticTestCatalog.Outcome(test, "PASS", "NO_BOUND_PAYOUT", "details")
+        val correct = SyntheticTestCatalog.Outcome(test, "PASS", "ACCEPT_CONTROL", "details",
+            test.expectedPayout, test.expectedMinutes, test.expectedMiles)
+        val wrongBinding = SyntheticTestCatalog.Outcome(test, "PASS", "NO_BOUND_PAYOUT", "details",
+            test.expectedPayout, test.expectedMinutes, test.expectedMiles)
+        val wrongAmount = SyntheticTestCatalog.Outcome(test, "PASS", "ACCEPT_CONTROL", "details",
+            999.0, test.expectedMinutes, test.expectedMiles)
         assertTrue(correct.meetsExpectation)
         assertFalse(wrongBinding.meetsExpectation)
+        assertFalse(wrongAmount.meetsExpectation)
         val summary = SyntheticTestCatalog.summary(listOf(correct, wrongBinding), 2)
         assertTrue(summary.contains("1/2 expectations met"))
         assertTrue(summary.contains("CHECK"))
