@@ -1,10 +1,19 @@
-name: Android CI Build v3.63
+name: Android CI Build v3.64
 
 on:
   push:
     branches: [ "main" ]
   pull_request:
   workflow_dispatch:
+    inputs:
+      sign_for_updates:
+        description: 'Sign a reviewed build with the permanent Driverade key'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -18,42 +27,78 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Cache Persistent Signing Keystore
-        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
-        with:
-          path: driverade-debug.keystore
-          key: driverade-persistent-signing-keystore-v1
-
-      - name: Require and configure persistent DEVELOPMENT signing key
-        run: |
-          if [ ! -s driverade-debug.keystore ]; then
-            echo "ERROR: development signing key cache is missing. Do not silently rotate signing keys."
-            exit 1
-          fi
-          keytool -list -v -keystore driverade-debug.keystore \
-            -storepass driverade_password -alias driverade_key | grep -E 'SHA256:|Owner:'
-          echo "DRIVERADE_KEYSTORE_PATH=$GITHUB_WORKSPACE/driverade-debug.keystore" >> "$GITHUB_ENV"
-          echo "DRIVERADE_KEYSTORE_PASSWORD=driverade_password" >> "$GITHUB_ENV"
-          echo "DRIVERADE_KEY_ALIAS=driverade_key" >> "$GITHUB_ENV"
-          echo "DRIVERADE_KEY_PASSWORD=driverade_password" >> "$GITHUB_ENV"
-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@017a9effdb900e5b5b2fddfb590a105619dca3c3 # v4.4.2
         with:
           gradle-version: '8.7'
 
+      - name: Set monotonically increasing version code
+        shell: bash
+        run: echo "DRIVERADE_VERSION_CODE=$((10000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+
       - name: Run parser comparison unit tests
         run: gradle testDebugUnitTest
 
-      - name: Build Driverade APK
+      # Routine PR/push builds cannot use the permanent private key.
+      # Their artifacts are clearly labeled as debug-signed test builds.
+      - name: Build CI test APK (debug signing only)
+        if: github.event_name != 'workflow_dispatch' || !inputs.sign_for_updates
         run: gradle assembleDebug
 
-      - name: Rename Output to Driverade.apk
+      # Deliberate manual signing only. Never restore signing keys from an
+      # Actions cache, or expose them to automatic pull-request compilation.
+      - name: Build APK with permanent signing key
+        if: github.event_name == 'workflow_dispatch' && inputs.sign_for_updates
+        shell: bash
+        env:
+          DRIVERADE_KEYSTORE_BASE64: ${{ secrets.DRIVERADE_KEYSTORE_BASE64 }}
+          DRIVERADE_KEYSTORE_PASSWORD: ${{ secrets.DRIVERADE_KEYSTORE_PASSWORD }}
+          DRIVERADE_KEY_ALIAS: ${{ secrets.DRIVERADE_KEY_ALIAS }}
+          DRIVERADE_KEY_PASSWORD: ${{ secrets.DRIVERADE_KEY_PASSWORD }}
         run: |
-          cp app/build/outputs/apk/debug/*.apk app/build/outputs/apk/debug/Driverade.apk
+          set -euo pipefail
+          for key in DRIVERADE_KEYSTORE_BASE64 DRIVERADE_KEYSTORE_PASSWORD DRIVERADE_KEY_ALIAS DRIVERADE_KEY_PASSWORD; do
+            if [[ -z "${!key:-}" ]]; then
+              echo "::error::Missing required permanent signing secret: $key"
+              exit 1
+            fi
+          done
+          export DRIVERADE_KEYSTORE_PATH="$RUNNER_TEMP/driverade-updates.jks"
+          trap 'rm -f "$DRIVERADE_KEYSTORE_PATH"' EXIT
+          umask 077
+          printf '%s' "$DRIVERADE_KEYSTORE_BASE64" | base64 --decode > "$DRIVERADE_KEYSTORE_PATH"
+          test -s "$DRIVERADE_KEYSTORE_PATH"
+          keytool -list -keystore "$DRIVERADE_KEYSTORE_PATH" \
+            -storepass:env DRIVERADE_KEYSTORE_PASSWORD \
+            -alias "$DRIVERADE_KEY_ALIAS" >/dev/null
+          gradle assembleDebug
 
-      - name: Upload Driverade APK
+      - name: Prepare APK artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$apk"
+          cp "$apk" "app/build/outputs/apk/debug/Driverade.apk"
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          if [[ -z "$sdk_root" ]]; then
+            echo "::error::Android SDK path is not available"
+            exit 1
+          fi
+          apksigner="$(find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 -name apksigner -type f | sort -V | tail -n 1)"
+          test -x "$apksigner"
+          "$apksigner" verify --verbose --print-certs "$apk"
+
+      - name: Upload CI test APK (not an in-place update)
+        if: github.event_name != 'workflow_dispatch' || !inputs.sign_for_updates
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: Driverade
+          name: Driverade-CI-DEBUG-NOT-FOR-UPDATES
+          path: app/build/outputs/apk/debug/Driverade.apk
+
+      - name: Upload permanent-signed update APK
+        if: github.event_name == 'workflow_dispatch' && inputs.sign_for_updates
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: Driverade-PERMANENT-SIGNED-UPDATE
           path: app/build/outputs/apk/debug/Driverade.apk
