@@ -32,11 +32,11 @@ internal class RollingOcrFrameBuffer(
     private var previousSignature: IntArray? = null
     private var keepUntil = -1L
 
-    val pendingCount: Int get() = pending.size
-    val pendingBytes: Int get() = bytesInMemory
-    fun postRollActive(nowMs: Long): Boolean = nowMs <= keepUntil
+    val pendingCount: Int get() = synchronized(this) { pending.size }
+    val pendingBytes: Int get() = synchronized(this) { bytesInMemory }
+    @Synchronized fun postRollActive(nowMs: Long): Boolean = nowMs <= keepUntil
 
-    fun add(frame: Frame): Added {
+    @Synchronized fun add(frame: Frame): Added {
         val old = previousSignature
         val diff = if (old == null || old.size != frame.signature.size) null else
             old.indices.sumOf { kotlin.math.abs(old[it] - frame.signature[it]).toDouble() } / old.size
@@ -58,7 +58,7 @@ internal class RollingOcrFrameBuffer(
         return Added(emptyList(), false, diff, removed)
     }
 
-    fun promote(nowMs: Long): List<Frame> {
+    @Synchronized fun promote(nowMs: Long): List<Frame> {
         keepUntil = maxOf(keepUntil, nowMs + postRollMs)
         prune(nowMs)
         val result = pending.toList()
@@ -67,7 +67,7 @@ internal class RollingOcrFrameBuffer(
         return result
     }
 
-    fun clear() {
+    @Synchronized fun clear() {
         pending.clear()
         bytesInMemory = 0
         previousSignature = null
