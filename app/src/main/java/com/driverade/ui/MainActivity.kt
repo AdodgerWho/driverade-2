@@ -544,7 +544,18 @@ class MainActivity : AppCompatActivity() {
                 if (enabled) {
                     AlertDialog.Builder(this@MainActivity)
                         .setTitle("Enable local screenshots?")
-                        .setMessage("Captures gig-app screens during debugging. Screens may contain names, addresses and other private information. Screenshots stay on this device, are not automatically shared, and up to 100 verified PNGs are retained. Live Uber OCR can run locally without saving screenshots.")
+                        .setMessage(
+                            "DEVELOPER SCREENSHOT DIAGNOSTICS — may expose unintended " +
+                            "information including rider names, addresses, notifications, " +
+                            "and other visible apps. Only enable during your own testing.\\n\\n" +
+                            "While Uber is visible, Driverade holds a bounded, compressed " +
+                            "eight-second rolling frame buffer in app memory. An offer or " +
+                            "visual/window change preserves nearby frames and the following " +
+                            "ten seconds as PNGs (up to 100 total). No automatic upload. " +
+                            "Exported ZIPs are UNREDACTED. Turning this off discards the " +
+                            "memory buffer but does not delete previously saved PNGs. " +
+                            "Normal on-device Uber OCR works without saving screenshots."
+                        )
                         .setPositiveButton("Enable") { _, _ ->
                             debugPrefs.edit().putBoolean("enabled", true).apply()
                         }
@@ -555,6 +566,9 @@ class MainActivity : AppCompatActivity() {
                         .show()
                 } else {
                     debugPrefs.edit().putBoolean("enabled", false).apply()
+                    sendBroadcast(Intent(OptimizedOfferEngine.ACTION_CLEAR_VISUAL_BUFFER).apply {
+                        setPackage(packageName)
+                    })
                 }
             }
         }
