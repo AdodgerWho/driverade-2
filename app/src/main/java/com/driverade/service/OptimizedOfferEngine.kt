@@ -33,6 +33,10 @@ class OptimizedOfferEngine : AccessibilityService() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val testPillReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ACTION_CLEAR_VISUAL_BUFFER) {
+                visualDebug?.clearRollingBuffer()
+                return
+            }
             if (intent?.action == ACTION_TEST_OFFER_CARD) {
                 val platform = intent.getStringExtra(EXTRA_TEST_PLATFORM).orEmpty()
                 val raw = intent.getStringExtra(EXTRA_TEST_NODES).orEmpty()
@@ -184,6 +188,7 @@ class OptimizedOfferEngine : AccessibilityService() {
 
     companion object {
         const val ACTION_TEST_ALERT_PILL = "com.driverade.action.TEST_ALERT_PILL"
+        const val ACTION_CLEAR_VISUAL_BUFFER = "com.driverade.action.CLEAR_VISUAL_BUFFER"
         const val ACTION_TEST_OFFER_CARD = "com.driverade.action.TEST_OFFER_CARD"
         const val EXTRA_TEST_PLATFORM = "test_platform"
         const val EXTRA_TEST_NODES = "test_nodes"
@@ -221,7 +226,11 @@ class OptimizedOfferEngine : AccessibilityService() {
         visualDebug = VisualDebugCapture(this)
         visualDebug?.setUberOcrListener(::handleRestoredOcr)
         mainHandler.postDelayed(restoredTick, 1_200L)
-        val filter = IntentFilter().apply { addAction(ACTION_TEST_ALERT_PILL); addAction(ACTION_TEST_OFFER_CARD) }
+        val filter = IntentFilter().apply {
+            addAction(ACTION_TEST_ALERT_PILL)
+            addAction(ACTION_TEST_OFFER_CARD)
+            addAction(ACTION_CLEAR_VISUAL_BUFFER)
+        }
         if (Build.VERSION.SDK_INT >= 33) {
             registerReceiver(testPillReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
@@ -395,6 +404,7 @@ class OptimizedOfferEngine : AccessibilityService() {
     private fun publishRestoredCandidate(
         candidate: RestoredOfferParser.Candidate, pkg: String, captureId: String
     ) {
+        if (candidate.platform == "UBER") visualDebug?.onOfferRecognized(captureId)
         val evaluation = evaluationOf(candidate, pkg)
         val signature = candidate.platform + "|" + candidate.kind + "|" +
             candidate.payout + "|" + candidate.pickupMinutes + "|" +
@@ -485,6 +495,14 @@ class OptimizedOfferEngine : AccessibilityService() {
                                     " pngOptIn=" + (visualDebug?.isEnabled() == true))
                         }
                         visualDebug?.observeTimedUber(ocrCaptureId)
+                    } else if (prefs.isPlatformEnabled("UBER") &&
+                        visualDebug?.isEnabled() == true) {
+                        val uberRootAvailable = windows.orEmpty().any { w ->
+                            runCatching { w.root?.packageName?.toString() == "com.ubercab.driver" }
+                                .getOrDefault(false)
+                        }
+                        if (uberRootAvailable || visualDebug?.hasActivePostroll() == true)
+                            visualDebug?.observePrerollUber("preroll-" + System.currentTimeMillis())
                     }
                 }
             } catch (e: Exception) {
