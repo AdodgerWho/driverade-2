@@ -179,8 +179,6 @@ class OptimizedOfferEngine : AccessibilityService() {
         }
     }
 
-    private var lastShadowSignature: String = ""
-    private var lastShadowTime = 0L
     private var lastOfferSignature: String = ""
     private var lastOfferTimestamp: Long = 0L
 
@@ -212,11 +210,7 @@ class OptimizedOfferEngine : AccessibilityService() {
             "com.grubhub.driver" to "GRUBHUB"
         )
 
-        private val PAYOUT_REGEX = Regex("""\$\s*(\d{1,4}(?:\.\d{1,2})?)""")
-        private val MINUTES_REGEX = Regex("""(\d{1,3})\s*(?:min|mins|minute|minutes)\b""", RegexOption.IGNORE_CASE)
-        private val HOURS_MINUTES_REGEX = Regex("""(\d+)\s*hr\s*(\d+)\s*min""", RegexOption.IGNORE_CASE)
-        private val MILES_REGEX = Regex("""(\d{1,4}(?:\.\d{1,2})?)\s*(?:mi|mile|miles)\b""", RegexOption.IGNORE_CASE)
-        private val OFFER_KEYWORDS = listOf("match", "trip", "ride", "offer", "accept")
+
     }
 
     override fun onServiceConnected() {
