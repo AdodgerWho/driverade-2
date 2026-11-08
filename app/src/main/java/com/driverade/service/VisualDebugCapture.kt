@@ -118,8 +118,17 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
                         val image = bitmap ?: error("Bitmap copy returned null")
                         log("CAPTURE_SUCCESS", "capture=" + captureId +
                             " width=" + image.width + " height=" + image.height +
-                            " source=" + source + " windowId=" + (chosen?.id ?: "NA"))
-                        if (saveDebug) saveAndVerify(image, pkg, captureId)
+                            " source=" + source + " windowId=" + (chosen?.id ?: "NA") +
+                            " pngOptIn=" + saveDebug)
+                        if (saveDebug) {
+                            saveAndVerify(image, pkg, captureId)
+                        } else {
+                            // OCR is transient. In particular, a successful screenshot API
+                            // response does not mean a PNG was persisted.
+                            log("PNG_SKIPPED", "capture=" + captureId +
+                                " reason=VISUAL_DEBUG_DISABLED pngSaved=false " +
+                                "transientUberOcr=" + (pkg == "com.ubercab.driver"))
+                        }
                         if (pkg == "com.ubercab.driver") inspectUberImage(image, captureId)
                     } catch (error: Exception) {
                         log("CAPTURE_PROCESS_FAILED", "capture=" + captureId +
@@ -155,9 +164,15 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
             return
         }
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        log("OCR_REQUESTED", "capture=" + captureId +
+            " provider=ML_KIT rawText=TRANSIENT savedToPng=false")
         try {
             recognizer.process(InputImage.fromBitmap(copy, 0))
                 .addOnSuccessListener { result ->
+                    log("OCR_COMPLETED", "capture=" + captureId +
+                        " textBlocks=" + result.textBlocks.size +
+                        " listenerConnected=" + (uberOcrListener != null) +
+                        " rawText=OMITTED")
                     val summary = UberScreenOcrDiagnostics.inspect(result.text)
                     InternalDiagnosticsLogger.logInteraction(service, "UBER_OCR_DIAGNOSTIC",
                         "capture=" + captureId + " " + summary.diagnostic())
