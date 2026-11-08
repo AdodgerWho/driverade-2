@@ -152,9 +152,29 @@ object FeatureDiagnostics {
                 "Uber OCR still operates transiently; expect VISUAL_DEBUG_PNG_SKIPPED " +
                 "and VISUAL_DEBUG_OCR_COMPLETED, and no new VISUAL_DEBUG_FILE_VERIFIED")
         checks += Check("Screenshot capture file verification",
-            if (validScreenshots > 0) "PASS" else if (visualEnabled) "FAIL" else "BLOCKED",
+            if (validScreenshots > 0) "PASS" else "BLOCKED",
             "optIn=$visualEnabled savedPng=${screenshotFiles.size} verifiedPng=$validScreenshots; " +
-                "PASS proves readable image files exist, not that the current screen was captured")
+                "PASS proves readable selected image files exist; opt-in rolling mode may save none " +
+                "until an offer/window/visual-change trigger, not proof of current-screen capture")
+        checks += check("Rolling OCR pre/post frame selector") {
+            val ring = RollingOcrFrameBuffer()
+            fun frame(id: String, t: Long, shade: Int) =
+                RollingOcrFrameBuffer.Frame(id, t, "WINDOW", ByteArray(24) { shade.toByte() },
+                    IntArray(12) { shade })
+            ring.add(frame("expired", 1_000L, 5))
+            ring.add(frame("relevant", 4_000L, 25))
+            val before = ring.promote(10_000L).map { it.captureId }
+            val after = ring.add(frame("followup", 11_000L, 50)).toPersist.map { it.captureId }
+            val passed = before == listOf("relevant") && after == listOf("followup")
+            ring.clear()
+            (passed && ring.pendingCount == 0) to
+                "8s pre-roll, 10s post-roll and memory clearing; pure logic, not live image capture"
+        }
+        val rollingOptIn = context.getSharedPreferences("driverade_visual_debug", 0)
+            .getBoolean("enabled", false)
+        checks += Check("Rolling OCR screenshot sequence on device", "BLOCKED",
+            "Opt-in=$rollingOptIn; verify ROLLING_STAGED, ROLLING_TRIGGER and " +
+                "ROLLING_FRAME_SAVED with matching capture IDs and readable exported PNGs")
         checks += Check("Screenshot retention capacity",
             if (screenshotFiles.size <= VisualDebugCapture.MAX_FILES) "PASS" else "FAIL",
             "limit=${VisualDebugCapture.MAX_FILES} saved=${screenshotFiles.size} verified=$validScreenshots; " +
