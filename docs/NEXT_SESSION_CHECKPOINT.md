@@ -2,6 +2,8 @@
 
 **Updated:** 2026-11-08. **Status:** Existing Android/Kotlin app plus unmerged experimental feature stack; some CI/build success, live Uber offer correctness **not yet established**.
 
+**Coding-context rule (2026-11-09):** Before each substantive Driverade code change or review, consult this checkpoint, current architecture and the [mandatory roadmap-refresh / architecture-writeback protocol](BRAINSTORMING_PROTOCOL.md). Reconcile any owner-approved design change in the project's records before implementation. The details below are historical to their stated date; verify current PRs and hardware evidence.
+
 ## Where we stopped
 
 Goal: restore the gig-work command-center's reliable real **Uber/Lyft/Hich offer acquisition → validated parser → configured rules/gates → nonblocking alerter**, using actual phone evidence. Make it **work**, prove that it works, then refine implementation. Avoid unnecessary breakage during Kotlin migration. This is the immediate revenue-supporting priority before broader personal-assistant development.

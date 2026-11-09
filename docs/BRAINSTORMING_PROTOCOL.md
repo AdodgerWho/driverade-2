@@ -13,6 +13,22 @@
 
 A conversational trigger works **when this protocol and its checkpoint are available to the assistant**; it is not an OS event listener or guaranteed autonomous notification. If the relevant repo/context is unavailable, say so rather than inventing a previous decision.
 
+## Required roadmap refresh before every coding decision (2026-11-09)
+
+**Standing owner instruction:** Before writing, modifying, reviewing, merging or generating code for a named project, **identify that project and read its current authoritative roadmap/architecture, relevant feature contract, most recent decision/checkpoint notes and actual branch/test state**. Apply these requirements to the code being written. If a current owner-approved architectural correction changes the design, update the relevant documents before (or as part of) implementing that change. Do not assume a recalled older plan supersedes a newer owner decision.
+
+## Required architecture writeback when discussion focus changes (2026-11-09)
+
+**Standing owner instruction:** An architecture or project-planning discussion is not complete merely because the conversation moves on. When a material design decision is reached, a prior decision is corrected, a safeguard is changed, or the discussion shifts to another substantial topic or project, **checkpoint the change in the appropriate project repository during the active conversation, before moving on**.
+
+1. Read the latest project checkpoint and related design notes. Compare new decisions with existing records; distinguish **DECIDED**, **PROPOSED**, **RESEARCH**, **IMPLEMENTED**, **CI-TESTED**, and **DEVICE-VERIFIED**.
+2. When there is a meaningful delta, save a dated entry to the affected project's roadmap/decision log, capturing **what changed, why, alternatives rejected, risks, unresolved questions, and the next step**. Never silently overwrite history or promote a proposed idea to proven functionality.
+3. When changing projects, save **separate** checkpoints to their own repositories. Driverade, Personal Assistant, cryptographic-engine, and the proposed project-continuity service do not inherit each other's code, keys, telemetry, permissions or decisions implicitly.
+4. Confirm a successful write with actual commit/PR/file links. If access/history is unavailable, disclose that limitation and give a ready-to-apply note; **never claim an unsaved decision was saved**.
+5. For each next code change, refresh from authoritative documents and actual branch/CI/device status; explain any owner-approved architectural deviation rather than quietly altering the project.
+
+**No-change exception:** Routine chatter and repeated unchanged facts do not need commits. This is an **interactive workflow**, not an always-running background monitor or automatic access to every conversation.
+
 ## Beginning-of-session refresher
 
 Keep the initial refresher concise (normally 4–8 sentences or a compact checklist), in this order:
