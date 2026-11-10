@@ -3,8 +3,6 @@ package com.driverade.ui
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.provider.Settings
 import android.view.View
 import android.widget.EditText
@@ -21,7 +19,6 @@ import com.driverade.service.BugReportManager
 import com.driverade.service.DriveradeState
 import com.driverade.service.LoggerService
 import com.driverade.service.OptimizedOfferEngine
-import com.driverade.service.ShiftTracker
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -31,14 +28,6 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: FragmentDashboardBinding
     private lateinit var prefs: DriverPreferences
-
-    private val shiftHandler = Handler(Looper.getMainLooper())
-    private val shiftUpdateRunnable = object : Runnable {
-        override fun run() {
-            updateDashboardShiftAndStatus()
-            shiftHandler.postDelayed(this, 300_000L)
-        }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,24 +48,17 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         updatePermissionStatusPills()
-        updateDashboardShiftAndStatus()
-        shiftHandler.post(shiftUpdateRunnable)
-    }
-
-    override fun onPause() {
-        super.onPause()
-        shiftHandler.removeCallbacks(shiftUpdateRunnable)
     }
 
     private fun setupHeaderAndStatusPills() {
-        binding.tvVersionBadge?.text = "Driverade v3.63"
+        binding.tvVersionBadge.text = "Driverade v3.63"
         updatePermissionStatusPills()
 
-        binding.pillAccessibilityStatus?.setOnClickListener {
+        binding.pillAccessibilityStatus.setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
 
-        binding.pillOverlayStatus?.setOnClickListener {
+        binding.pillOverlayStatus.setOnClickListener {
             if (!Settings.canDrawOverlays(this)) {
                 val intent = Intent(
                     Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
@@ -93,9 +75,9 @@ class MainActivity : AppCompatActivity() {
         val overlayEnabled = Settings.canDrawOverlays(this)
         val accessibilityEnabled = isAccessibilityServiceEnabled()
 
-        binding.pillAccessibilityStatus?.text =
+        binding.pillAccessibilityStatus.text =
             if (accessibilityEnabled) "Accessibility: ON" else "Accessibility: OFF (Tap)"
-        binding.pillOverlayStatus?.text =
+        binding.pillOverlayStatus.text =
             if (overlayEnabled) "Overlay: ON" else "Overlay: OFF (Tap)"
     }
 
@@ -109,30 +91,30 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupModularNavigation() {
-        binding.navBtnDashboard?.setOnClickListener { showSection(Section.DASHBOARD) }
-        binding.navBtnHeatmaps?.setOnClickListener {
+        binding.navBtnDashboard.setOnClickListener { showSection(Section.DASHBOARD) }
+        binding.navBtnHeatmaps.setOnClickListener {
             refreshHeatmapSummary()
             showSection(Section.HEATMAPS)
         }
-        binding.navBtnSettings?.setOnClickListener { showSection(Section.SETTINGS) }
+        binding.navBtnSettings.setOnClickListener { showSection(Section.SETTINGS) }
         showSection(Section.DASHBOARD)
     }
 
     private enum class Section { DASHBOARD, HEATMAPS, SETTINGS }
 
     private fun showSection(section: Section) {
-        binding.sectionDashboard?.visibility = if (section == Section.DASHBOARD) View.VISIBLE else View.GONE
-        binding.sectionHeatmaps?.visibility = if (section == Section.HEATMAPS) View.VISIBLE else View.GONE
-        binding.sectionSettings?.visibility = if (section == Section.SETTINGS) View.VISIBLE else View.GONE
+        binding.sectionDashboard.visibility = if (section == Section.DASHBOARD) View.VISIBLE else View.GONE
+        binding.sectionHeatmaps.visibility = if (section == Section.HEATMAPS) View.VISIBLE else View.GONE
+        binding.sectionSettings.visibility = if (section == Section.SETTINGS) View.VISIBLE else View.GONE
     }
 
     private fun setupThresholdControls() {
-        binding.etTargetHourlyRate?.setText(String.format(Locale.US, "%.2f", prefs.targetHourlyRate))
-        binding.etMinPayout?.setText(String.format(Locale.US, "%.2f", prefs.minPayout))
+        binding.etTargetHourlyRate.setText(String.format(Locale.US, "%.2f", prefs.targetHourlyRate))
+        binding.etMinPayout.setText(String.format(Locale.US, "%.2f", prefs.minPayout))
 
-        binding.btnSaveThresholds?.setOnClickListener {
-            val target = binding.etTargetHourlyRate?.text.toString().toDoubleOrNull() ?: 25.0
-            val minPay = binding.etMinPayout?.text.toString().toDoubleOrNull() ?: 10.0
+        binding.btnSaveThresholds.setOnClickListener {
+            val target = binding.etTargetHourlyRate.text.toString().toDoubleOrNull() ?: 25.0
+            val minPay = binding.etMinPayout.text.toString().toDoubleOrNull() ?: 10.0
             prefs.targetHourlyRate = target
             prefs.minPayout = minPay
             LoggerService.writeDiagnosticsSnapshot(
@@ -140,12 +122,12 @@ class MainActivity : AppCompatActivity() {
                 prefs,
                 listOfNotNull(DriveradeState.latestOffer.value)
             )
-            Toast.makeText(this, "Saved thresholds ($target/hr, min $$minPay)", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Saved v3.63 thresholds ($target/hr, min $$minPay)", Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun setupPlatformFilterBottomSheet() {
-        binding.btnOpenPlatformSheet?.setOnClickListener {
+        binding.btnOpenPlatformSheet.setOnClickListener {
             val sheet = BottomSheetDialog(this)
             val container = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -175,7 +157,6 @@ class MainActivity : AppCompatActivity() {
                     setPadding(0, 20, 0, 20)
                     setOnCheckedChangeListener { _, isChecked ->
                         prefs.setPlatformEnabled(key, isChecked)
-                        updateDashboardShiftAndStatus()
                     }
                 }
                 container.addView(sw)
@@ -186,22 +167,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateDashboardShiftAndStatus() {
-        val shiftHours = ShiftTracker.getFormattedShiftHours(prefs)
-        val hasActivePlatforms = ShiftTracker.isAnyPlatformActive(prefs)
-
-        val statusText = if (hasActivePlatforms) {
-            "Shift Time: $shiftHours hrs • Status: Monitoring Active Apps"
-        } else {
-            "Shift Time: $shiftHours hrs • Status: All Platforms Paused"
-        }
-
-        binding.tvShiftTracker?.text = statusText
-    }
-
     private fun refreshHeatmapSummary() {
         val grid = DriveradeState.getRollingGridDensity()
-        binding.tvHeatmapStatus?.text = if (grid.isEmpty()) {
+        binding.tvHeatmapStatus.text = if (grid.isEmpty()) {
             "Rolling 5-Min Geohash Pool: 0 active cells (On-device coordinate blurring active)"
         } else {
             grid.entries.joinToString("\n") { "${it.key}: ${it.value} validated offers" }
@@ -209,7 +177,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupDiagnosticsAndBugReport() {
-        binding.btnSendBugReport?.setOnClickListener {
+        binding.btnSendBugReport.setOnClickListener {
             val feedbackInput = EditText(this).apply {
                 hint = "Describe what happened (e.g., Uber card missed)..."
             }
@@ -225,12 +193,11 @@ class MainActivity : AppCompatActivity() {
                     )
                     startActivity(Intent.createChooser(intent, "Send Diagnostics Bug Report"))
                 }
+                .setNeutralButton("Export Locally") { _, _ ->
+                    BugReportManager.exportLogsLocally(this, prefs)
+                }
                 .setNegativeButton("Cancel", null)
                 .show()
-        }
-
-        binding.btnExportLogsLocally?.setOnClickListener {
-            BugReportManager.exportLogsLocally(this, prefs)
         }
     }
 
@@ -238,14 +205,14 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             DriveradeState.latestOffer.collectLatest { offer ->
                 if (offer != null) {
-                    binding.tvLatestOfferHeadline?.text = String.format(
+                    binding.tvLatestOfferHeadline.text = String.format(
                         Locale.US,
                         "%s: $%.2f/hr ($%.2f)",
                         offer.platform,
                         offer.hourlyRate,
                         offer.payout
                     )
-                    binding.tvLatestOfferSubtext?.text = String.format(
+                    binding.tvLatestOfferSubtext.text = String.format(
                         Locale.US,
                         "%.1f mi • %.0f min • $%.2f/mi",
                         offer.totalMiles,

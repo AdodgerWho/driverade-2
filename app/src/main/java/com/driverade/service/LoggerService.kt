@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import android.util.Log
-import androidx.core.content.FileProvider
 import com.driverade.data.DriverPreferences
 import java.io.File
 import java.io.FileWriter
@@ -20,7 +19,6 @@ class LoggerService : Service() {
     companion object {
         private const val TAG = "LoggerService"
         const val DIAGNOSTICS_FILENAME = "driverade_diagnostics.txt"
-        private const val SUPPORT_EMAIL = "adodgerwho@gmail.com"
 
         fun getDiagnosticsFile(context: Context): File =
             File(context.filesDir, DIAGNOSTICS_FILENAME)
@@ -43,11 +41,11 @@ class LoggerService : Service() {
             try {
                 FileWriter(file, false).use { writer ->
                     writer.append("Driverade Diagnostics - $timestamp\n")
-                    writer.append("Version: 3.62\n")
+                    writer.append("Version: 3.63\n")
                     writer.append("Target Rate: $${prefs.targetHourlyRate}\n")
                     writer.append("Min Payout: $${prefs.minPayout}\n")
                     writer.append("Today Earnings: $${prefs.todayEarnings}\n")
-                    writer.append("Today Active Hours: ${prefs.todayActiveHours}\n")
+                    writer.append("Today Active Hours: ${ShiftTracker.getFormattedShiftHours(prefs)}\n")
                     writer.append("UBER Map Total: ${DriveradeState.uberMapTotal}\n")
                     writer.append("LYFT Map Total: ${DriveradeState.lyftMapTotal}\n")
                     writer.append("HICH Map Total: ${DriveradeState.hichMapTotal}\n\n")
@@ -83,7 +81,7 @@ class LoggerService : Service() {
                 append("[$time] Platform=${offer.platform} (${offer.packageName}) | ")
                 append(String.format(Locale.US, "Payout=$%.2f | Rate=$%.2f/hr | ", offer.payout, offer.hourlyRate))
                 append(String.format(Locale.US, "Miles=%.1f | Minutes=%.0f | TargetMet=%b\n", offer.totalMiles, offer.totalMinutes, offer.meetsTarget))
-                append("  RawNodes: ${offer.rawNodes.joinToString(" :: ")}\n")
+                append("  [RAW_DUMP] Nodes: ${offer.rawNodes.joinToString(" :: ")}\n")
             }
         }
 
@@ -91,28 +89,6 @@ class LoggerService : Service() {
             context: Context,
             prefs: DriverPreferences,
             userFeedback: String
-        ): Intent {
-            val diagFile = ensureDiagnosticsHeader(context, prefs)
-            val uri = FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
-                diagFile
-            )
-            val body = buildString {
-                append("Driver Feedback:\n")
-                append(userFeedback.ifBlank { "(No custom note entered)" })
-                append("\n\n--- Inline Diagnostics Preview ---\n")
-                append(runCatching { diagFile.readText() }.getOrDefault("Unable to read log file."))
-            }
-
-            return Intent(Intent.ACTION_SEND).apply {
-                type = "message/rfc822"
-                putExtra(Intent.EXTRA_EMAIL, arrayOf(SUPPORT_EMAIL))
-                putExtra(Intent.EXTRA_SUBJECT, "Driverade v3.62 Bug Report & Diagnostics")
-                putExtra(Intent.EXTRA_TEXT, body)
-                putExtra(Intent.EXTRA_STREAM, uri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-        }
+        ): Intent = BugReportManager.createBugReportEmailIntent(context, prefs, userFeedback)
     }
 }
