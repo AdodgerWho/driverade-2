@@ -13,6 +13,39 @@ class RestoredOfferParserTest {
         assertEquals(mi, c.totalMiles, 0.001)
     }
 
+    @Test fun liveOffersWithIncludedIncentiveAndDestinationServiceWord() {
+        val exclusive = RestoredOfferParser.fromUberOcr(
+            "2 UberX Exclusive\n\$9.07\n5% Pro Perk included\n" +
+                "\$3.00 Flash Incentive included\n2 min • 0.3 mi\n" +
+                "10 mins • 3.3 mi\nComfort Inn & Suites\nAccept", "WINDOW").offer
+        expected(exclusive, 9.07, 12.0, 3.6)
+        assertEquals("UBERX", exclusive?.serviceType)
+
+        val match = RestoredOfferParser.fromUberOcr(
+            "2 UberX\n\$8.53\n\$3.00 Flash Incentive included\n" +
+                "3 min • 0.5 mi\n8 mins • 3.6 mi\nMatch", "WINDOW").offer
+        expected(match, 8.53, 11.0, 4.1)
+        assertEquals("match", match?.kind)
+        assertEquals("UBERX", match?.serviceType)
+    }
+
+    @Test fun unknownAdditionalAmountStillRejectsOffer() {
+        val result = RestoredOfferParser.fromUberOcr(
+            "UberX\n\$9.07\n\$3.00 bonus\n2 min • 0.3 mi\n10 mins • 3.3 mi\nAccept", "WINDOW")
+        assertEquals("ambiguous_or_missing_payout", result.reason)
+    }
+
+    @Test fun windowOcrCanPlaceFareImmediatelyBeforeServiceLabel() {
+        val text = "\$9.07\n2 UberX Exclusive\n4 \$3.00 Flash Incentive included\n" +
+            "2 min • 0.3 mi\n10 mins • 3.3 mi\nAccept"
+        val offer = RestoredOfferParser.fromUberOcr(text, "WINDOW").offer
+        expected(offer, 9.07, 12.0, 3.6)
+        assertEquals("UBERX", offer?.serviceType)
+        assertNull(RestoredOfferParser.fromUberOcr(text, "DISPLAY").offer)
+        val ambiguous = RestoredOfferParser.fromUberOcr("\$73.81\n" + text, "WINDOW")
+        assertEquals("ambiguous_or_missing_payout", ambiguous.reason)
+    }
+
     @Test fun realUberExclusiveOcrScreenshot() {
         val o = RestoredOfferParser.fromUberOcr(
             "Foreground chat 99 min, $111.00\nUberX Exclusive\n$5.53\n4.94 Verified\n" +

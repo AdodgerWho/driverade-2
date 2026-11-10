@@ -32,7 +32,7 @@ internal object UberScreenOcrDiagnostics {
             " status=UNVERIFIED rawText=OMITTED"
     }
     private val money = Regex("""\$\s*(\d{1,3}(?:\.\d{1,2})?)""")
-    private val time = Regex("""\b(\d{1,3})\s*min\b""", RegexOption.IGNORE_CASE)
+    private val time = Regex("""\b(\d{1,3})\s*(?:minutes|mins|min)\b""", RegexOption.IGNORE_CASE)
     private val miles = Regex("""\b(\d{1,3}(?:\.\d+)?)\s*mi\b""", RegexOption.IGNORE_CASE)
 
     fun inspect(text: String, captureSource: String = "DISPLAY"): Summary {

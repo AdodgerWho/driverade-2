@@ -22,6 +22,7 @@ import android.widget.TextView
 import com.driverade.data.DriverPreferences
 import com.driverade.receiver.AndroidAutoReceiver
 import java.util.Locale
+import java.security.MessageDigest
 
 class OptimizedOfferEngine : AccessibilityService() {
 
@@ -412,14 +413,28 @@ class OptimizedOfferEngine : AccessibilityService() {
             candidate.pickupMiles + "|" + candidate.tripMinutes + "|" +
             candidate.tripMiles
         val now = android.os.SystemClock.elapsedRealtime()
-        if (signature == lastOfferSignature && now - lastOfferTimestamp < 90_000L) {
+        val signatureHash = MessageDigest.getInstance("SHA-256")
+            .digest(signature.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        val boot = Settings.Global.getInt(contentResolver, Settings.Global.BOOT_COUNT, -1)
+        val dedup = getSharedPreferences("offer_deduplication", Context.MODE_PRIVATE)
+        val previousAt = dedup.getLong("elapsed", -1L)
+        val persistedDuplicate = boot >= 0 && boot == dedup.getInt("boot", -1) &&
+            signatureHash == dedup.getString("signature_hash", null) &&
+            previousAt >= 0 && now >= previousAt && now - previousAt < 90_000L
+        if ((signatureHash == lastOfferSignature && now >= lastOfferTimestamp &&
+                now - lastOfferTimestamp < 90_000L) || persistedDuplicate) {
             if (shouldTraceRestored("DEBOUNCE|" + signature, 0))
                 InternalDiagnosticsLogger.logInteraction(this, "DEBOUNCE",
                     "capture=" + captureId + " suppressed=true source=" + candidate.source)
             return
         }
-        lastOfferSignature = signature
+        lastOfferSignature = signatureHash
         lastOfferTimestamp = now
+        if (boot >= 0) {
+            dedup.edit().putString("signature_hash", signatureHash)
+                .putLong("elapsed", now).putInt("boot", boot).commit()
+        }
         InternalDiagnosticsLogger.logInteraction(this, "PARSE_RESULT",
             "capture=" + captureId + " source=" + candidate.source +
                 " kind=" + candidate.kind + " payout=" + candidate.payout +

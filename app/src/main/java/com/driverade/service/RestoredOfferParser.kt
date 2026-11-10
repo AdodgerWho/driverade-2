@@ -50,13 +50,13 @@ internal object RestoredOfferParser {
         "trip in progress", "start navigation", "picking up", "waiting for rider")
     // Ride service labels help scope OCR, but an UberX label is never an offer requirement.
     // Longer variants come first so Comfort Electric stays one category.
-    private val uberServiceLabel = Regex(
-        """\b(?:Comfort\s+Electric|Uber\s+Comfort(?:\s+Electric)?|Comfort|Electric|Uber\s*XL|Uber\s*X(?:\s+Share)?|Uber\s+Black(?:\s+SUV)?|Black(?:\s+SUV)?|Uber\s+Green|Green|Uber\s+Pet|Uber\s+Share|Uber\s+Reserve|Uber\s+Premier|Premier|Uber\s+WAV|Uber\s+Assist)\b""",
-        RegexOption.IGNORE_CASE
+    private val uberCardLabel = Regex(
+        """(?im)^[ \t]*(?:\d[ \t]+)?(?:Comfort[ \t]+Electric|Uber[ \t]+Comfort(?:[ \t]+Electric)?|Comfort|Electric|Uber[ \t]*XL|Uber[ \t]*X(?:[ \t]+Share)?|Uber[ \t]+Black(?:[ \t]+SUV)?|Black(?:[ \t]+SUV)?|Uber[ \t]+Green|Green|Uber[ \t]+Pet|Uber[ \t]+Share|Uber[ \t]+Reserve|Uber[ \t]+Premier|Premier|Uber[ \t]+WAV|Uber[ \t]+Assist)(?=[ \t]*(?:$|Exclusive\b|Match\b))"""
     )
     internal fun uberServiceType(text: String): String? =
-        uberServiceLabel.findAll(text).lastOrNull()?.value
-            ?.trim()?.replace(Regex("""\s+"""), "_")?.uppercase(Locale.US)
+        uberCardLabel.findAll(text).lastOrNull()?.value
+            ?.trim()?.replace(Regex("""^\d[ \t]+"""), "")
+            ?.replace(Regex("""\s+"""), "_")?.uppercase(Locale.US)
 
     /** Call only with one verified application-owned window at a time. */
     fun fromTree(platform: String, texts: List<String>, verifiedPayout: Double? = null): Result =
@@ -67,10 +67,11 @@ internal object RestoredOfferParser {
      * Every path still requires action, unique payout and two complete trip legs.
      */
     fun fromUberOcr(text: String, captureSource: String = "DISPLAY"): Result {
-        val match = uberServiceLabel.findAll(text).lastOrNull()
+        val match = uberCardLabel.findAll(text).lastOrNull()
         if (match == null && captureSource != "WINDOW")
             return Result(null, "ocr_no_service_context")
-        val section = if (match != null) text.substring(match.range.first).take(1700)
+        val section = if (captureSource == "WINDOW") text.takeLast(1700)
+            else if (match != null) text.substring(match.range.first).take(1700)
             else text.takeLast(1700)
         return parse("UBER", section, Source.OCR, null)
     }
@@ -109,7 +110,11 @@ internal object RestoredOfferParser {
         } else {
             val found = money.findAll(text).filterNot {
                 val following = text.substring(it.range.last + 1).take(8)
-                Regex("""^\s*/\s*hr""", RegexOption.IGNORE_CASE).containsMatchIn(following)
+                val restOfLine = text.substring(it.range.last + 1).substringBefore('\n')
+                Regex("""^\s*/\s*hr""", RegexOption.IGNORE_CASE).containsMatchIn(following) ||
+                    (source == Source.OCR && platform.startsWith("UBER") &&
+                        Regex("""^\s*Flash\s+Incentive\s+included\b""", RegexOption.IGNORE_CASE)
+                            .containsMatchIn(restOfLine))
             }.mapNotNull { it.groupValues[1].toDoubleOrNull() }
                 .filter { it in 2.0..500.0 }.distinct().toList()
             if (found.size != 1) return Result(null, "ambiguous_or_missing_payout")
