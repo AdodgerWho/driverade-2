@@ -1,12 +1,14 @@
 package com.driverade.ui
 
 import android.content.Intent
+import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.view.View
+import android.text.InputType
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Switch
@@ -18,10 +20,12 @@ import androidx.lifecycle.lifecycleScope
 import com.driverade.data.DriverPreferences
 import com.driverade.databinding.FragmentDashboardBinding
 import com.driverade.service.BugReportManager
+import com.driverade.service.FeatureDiagnostics
 import com.driverade.service.DriveradeState
 import com.driverade.service.LoggerService
 import com.driverade.service.OptimizedOfferEngine
 import com.driverade.service.ShiftTracker
+import com.driverade.service.TipLedger
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -50,9 +54,12 @@ class MainActivity : AppCompatActivity() {
 
         setupHeaderAndStatusPills()
         setupModularNavigation()
+        setupOperatingModesAndStats()
+        setupAlertPillTest()
         setupThresholdControls()
         setupPlatformFilterBottomSheet()
         setupDiagnosticsAndBugReport()
+        setupVisualDebugCapture()
         observeRealtimeOffers()
     }
 
@@ -60,6 +67,7 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         updatePermissionStatusPills()
         updateDashboardShiftAndStatus()
+        refreshTodayStats()
         shiftHandler.post(shiftUpdateRunnable)
     }
 
@@ -69,11 +77,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupHeaderAndStatusPills() {
-        binding.tvVersionBadge?.text = "Driverade v3.63"
+        binding.tvVersionBadge?.text = "Driverade"
         updatePermissionStatusPills()
 
         binding.pillAccessibilityStatus?.setOnClickListener {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            startActivity(Intent(this, AccessibilitySetupActivity::class.java))
         }
 
         binding.pillOverlayStatus?.setOnClickListener {
@@ -115,6 +123,8 @@ class MainActivity : AppCompatActivity() {
             showSection(Section.HEATMAPS)
         }
         binding.navBtnSettings?.setOnClickListener { showSection(Section.SETTINGS) }
+        binding.btnAccessibilityGuide?.setOnClickListener { startActivity(Intent(this, AccessibilitySetupActivity::class.java)) }
+        binding.btnAndroidAutoGuide?.setOnClickListener { startActivity(Intent(this, AndroidAutoGuideActivity::class.java)) }
         showSection(Section.DASHBOARD)
     }
 
@@ -124,6 +134,99 @@ class MainActivity : AppCompatActivity() {
         binding.sectionDashboard?.visibility = if (section == Section.DASHBOARD) View.VISIBLE else View.GONE
         binding.sectionHeatmaps?.visibility = if (section == Section.HEATMAPS) View.VISIBLE else View.GONE
         binding.sectionSettings?.visibility = if (section == Section.SETTINGS) View.VISIBLE else View.GONE
+        listOf(
+            binding.navBtnDashboard to (section == Section.DASHBOARD),
+            binding.navBtnHeatmaps to (section == Section.HEATMAPS),
+            binding.navBtnSettings to (section == Section.SETTINGS)
+        ).forEach { (tab, selected) ->
+            tab?.setBackgroundResource(
+                if (selected) com.driverade.R.drawable.bg_nav_active
+                else com.driverade.R.drawable.bg_nav_inactive
+            )
+            tab?.setTextColor(Color.parseColor(if (selected) "#E5FAFF" else "#B8C9DE"))
+            tab?.contentDescription = "${tab?.text}, ${if (selected) "selected" else "not selected"}"
+        }
+    }
+
+    private fun setupOperatingModesAndStats() {
+        binding.switchAlert?.isChecked = prefs.alerterEnabled
+        binding.switchAlert?.setOnCheckedChangeListener { _, checked ->
+            prefs.alerterEnabled = checked
+            refreshOperatingMode()
+        }
+        binding.btnEditTodayStats?.setOnClickListener { showEditTodayStats() }
+        refreshOperatingMode()
+        refreshTodayStats()
+    }
+
+    private fun refreshOperatingMode() {
+        val mode = if (prefs.alerterEnabled) "ALERTS ACTIVE" else "MONITORING PAUSED"
+        binding.tvOperatingMode?.text = mode
+    }
+
+    private fun refreshTodayStats() {
+        val earnings = prefs.todayEarnings
+        val hours = prefs.todayActiveHours
+        val rate = if (hours > 0.0) earnings / hours else 0.0
+        binding.tvTodayEarnings?.text = String.format(Locale.US, "$%.2f", earnings)
+        binding.tvTodayActiveHours?.text = String.format(Locale.US, "%.2f active hours · $%.2f/hr", hours, rate)
+        binding.tvTodayOffers?.text = "${prefs.todayOffersCount} offers · ${prefs.todayGoodOffersCount} qualified"
+        binding.tvTodayTips?.text = String.format(Locale.US, "Tips observed today: $%.2f", TipLedger.totalToday(this))
+        binding.tvTodayTipCount?.text = "${TipLedger.countToday(this)} explicit tips detected (provisional)"
+    }
+
+    private fun showEditTodayStats() {
+        val earnings = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText(String.format(Locale.US, "%.2f", prefs.todayEarnings))
+            hint = "Today's earnings"
+        }
+        val hours = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText(String.format(Locale.US, "%.2f", prefs.todayActiveHours))
+            hint = "Active hours"
+        }
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(40, 12, 40, 0)
+            addView(TextView(this@MainActivity).apply { text = "Earnings ($)" })
+            addView(earnings)
+            addView(TextView(this@MainActivity).apply { text = "Active hours" })
+            addView(hours)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Edit today's totals")
+            .setView(container)
+            .setPositiveButton("Save") { _, _ ->
+                val amount = earnings.text.toString().toDoubleOrNull()
+                val time = hours.text.toString().toDoubleOrNull()
+                if (amount == null || time == null || !amount.isFinite() || !time.isFinite() || amount < 0 || time < 0) {
+                    Toast.makeText(this, "Enter valid non-negative totals", Toast.LENGTH_SHORT).show()
+                } else {
+                    prefs.todayEarnings = amount
+                    prefs.todayActiveHours = time
+                    refreshTodayStats()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun setupAlertPillTest() {
+        binding.btnTestAlertPill?.setOnClickListener {
+            if (!isAccessibilityServiceEnabled()) {
+                Toast.makeText(this, "Enable Driverade Accessibility first", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            if (!Settings.canDrawOverlays(this)) {
+                Toast.makeText(this, "Enable overlay permission to test the pill", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            sendBroadcast(Intent(OptimizedOfferEngine.ACTION_TEST_ALERT_PILL).apply {
+                setPackage(packageName)
+            })
+            Toast.makeText(this, "Sample alert requested", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun setupThresholdControls() {
@@ -197,6 +300,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.tvShiftTracker?.text = statusText
+        refreshTodayStats()
     }
 
     private fun refreshHeatmapSummary() {
@@ -208,7 +312,39 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun setupVisualDebugCapture() {
+        val debugPrefs = getSharedPreferences("driverade_visual_debug", MODE_PRIVATE)
+        binding.switchVisualDebug?.apply {
+            isChecked = debugPrefs.getBoolean("enabled", false)
+            setOnCheckedChangeListener { _, enabled ->
+                if (enabled) {
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Enable local screenshots?")
+                        .setMessage("Captures gig-app screens during debugging. Screens may contain names, addresses and other private information. Screenshots stay on this device, are not automatically shared, and only the newest 40 are retained.")
+                        .setPositiveButton("Enable") { _, _ ->
+                            debugPrefs.edit().putBoolean("enabled", true).apply()
+                        }
+                        .setNegativeButton("Cancel") { _, _ ->
+                            debugPrefs.edit().putBoolean("enabled", false).apply()
+                            isChecked = false
+                        }
+                        .show()
+                } else {
+                    debugPrefs.edit().putBoolean("enabled", false).apply()
+                }
+            }
+        }
+    }
+
     private fun setupDiagnosticsAndBugReport() {
+        binding.btnRunFeatureDiagnostics?.setOnClickListener {
+            val checks = FeatureDiagnostics.run(this)
+            AlertDialog.Builder(this)
+                .setTitle("Feature Diagnostics")
+                .setMessage(FeatureDiagnostics.format(checks))
+                .setPositiveButton("Close", null)
+                .show()
+        }
         binding.btnSendBugReport?.setOnClickListener {
             val feedbackInput = EditText(this).apply {
                 hint = "Describe what happened (e.g., Uber card missed)..."
@@ -231,6 +367,17 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnExportLogsLocally?.setOnClickListener {
             BugReportManager.exportLogsLocally(this, prefs)
+        }
+
+        binding.btnExportVisualDebugBundle?.setOnClickListener {
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Export private screenshots?")
+                .setMessage("Saved screenshots may contain rider names, addresses, and other sensitive details. The ZIP is saved locally to Downloads. Review it before sharing.")
+                .setPositiveButton("Export ZIP") { _, _ ->
+                    BugReportManager.exportVisualDebugBundle(this)
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
         }
     }
 
