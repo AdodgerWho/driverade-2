@@ -31,3 +31,11 @@ Owner requested one cohesive experimental build and a safe route to eventual bra
 6. Cleanup: Only close an obsolete PR after confirming its unique code and evidence links are represented by a newer head; delete an old branch only after confirming no unique commits needed or recovery references. No branches deleted as part of this experiment.
 
 Known limits: Uber earnings totals are a provisional passive observer, not completed-ride reconciliation. Lyft/Hich earnings, individual ride settlement and active-hour counting remain separate. Android Auto-only match events may not be visible on the phone. No unsupported claim of a complete release.
+
+## Diagnostic modernization candidate (experimental, November 10)
+- Added `FailureTreeRules`, `FailureTreeStore`, and `FailureTreeDiagnostics`: an owner-opted-in local SQLite recurrence index of bounded sanitized categories, cause, stage, first/last time, last capture ID and occurrence count. It records no raw accessibility content.
+- Existing diagnostic event logging is preserved; failure-tree indexing errors are contained, and user-facing feature diagnostics displays a short status snapshot.
+- Repeated ERROR/WARNING events of the same kind (four in one minute, two-minute cooldown) create `ANOMALY_REPETITION` records; this is a repetition signal, **not** a root-cause diagnosis. Missing-root, disabled OCR and ordinary parser rejections remain observations.
+- When the Uber-owned window is visible but no Uber accessibility event has arrived for at least a minute, a throttled `EVENT_SILENCE_CANDIDATE` is recorded. It does not assert that a service stopped; the service may be legitimately idle. No automatic recovery is attempted.
+- This is a **first failure-tree foundation**, not parity with the separate Personal Assistant's advanced cross-component diagnostic tree. Remaining future work: unified cross-stage causal graph, persistent capture correlation, independent watchdog, explicit data pruning, missing-event reliability tests, and exported structured incident report. Do not represent these as implemented.
+- Privacy and gating: Diagnostic recurrence tracking requires the existing user-enabled diagnostic logger; disabling it does not disable the accessibility engine, parsing, earnings monitoring, or alerts. No remote diagnostic transmission. Device and synthetic tests required before promotion.
