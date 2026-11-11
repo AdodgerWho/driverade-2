@@ -3,7 +3,7 @@ package com.driverade.service
 /** Observation-only categories; does not alter offer decisions. */
 internal object FailureTreeRules {
     data class Finding(val stage: String, val kind: String, val cause: String, val severity: String)
-    private val capture = Regex("""\\bcapture=([A-Za-z0-9_-]{1,70})""")
+    private val capture = Regex("""\bcapture=([A-Za-z0-9_-]{1,70})""")
     fun captureId(detail: String): String? = capture.find(detail)?.groupValues?.get(1)
 
     fun classify(category: String, detail: String): Finding? = when (category) {
