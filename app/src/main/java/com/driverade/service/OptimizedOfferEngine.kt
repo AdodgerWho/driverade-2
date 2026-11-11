@@ -372,6 +372,7 @@ class OptimizedOfferEngine : AccessibilityService() {
             }
             foundText = true
             TipLedger.observe(this, platform, texts)
+            if (platform == "UBER") UberMapEarnings.observe(this, texts, "TREE_" + acquisition)
             val resolved = if (platform == "UBER" || platform == "UBER_EATS")
                 UberOfferFieldResolver.resolve(fields) else null
             val parsed = RestoredOfferParser.fromTree(platform, texts, resolved?.payout)
@@ -570,6 +571,7 @@ class OptimizedOfferEngine : AccessibilityService() {
                 "capture=" + captureId + " reason=EVENT_OLDER_THAN_8_SECONDS")
             return
         }
+        UberMapEarnings.observe(this, ocr.lines(), "OCR_" + captureSource)
         val parsed = RestoredOfferParser.fromUberOcr(ocr, captureSource)
         // Record every OCR decision so each completed image has a matching parser outcome.
         InternalDiagnosticsLogger.logInteraction(this, "RESTORED_OCR_PARSE",
