@@ -7,6 +7,7 @@ internal object FailureTreeRules {
     fun captureId(detail: String): String? = capture.find(detail)?.groupValues?.get(1)
 
     fun classify(category: String, detail: String): Finding? = when (category) {
+        "EVENT_SILENCE_CANDIDATE" -> Finding("acquisition", "EVENT_SILENCE", "uber_window_visible_without_events", "OBSERVATION")
         "RESTORED_TICK_ERROR" -> Finding("acquisition", "TIMER_EXCEPTION", "tick_exception", "ERROR")
         "RESTORED_WINDOW_ERROR", "UBER_ZERO_NODE_WINDOWS_ERROR", "WINDOW_VISIBILITY_ERROR" ->
             Finding("acquisition", "WINDOW_INSPECTION_FAILURE", category, "WARNING")
