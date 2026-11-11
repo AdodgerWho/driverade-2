@@ -194,6 +194,14 @@ object FeatureDiagnostics {
             "No active provider or road-event validation")
         checks += Check("30-day encrypted hotspot history", "NOT_IMPLEMENTED",
             "Only a 5-minute in-memory demand grid exists")
+        checks += check("Failure-tree database readable") {
+            // A readable summary is structural evidence, not a complete behavior test.
+            val summary = FailureTreeDiagnostics.summary(context)
+            summary.isNotBlank() to summary.take(500)
+        }
+        checks += Check("Failure-tree anomaly detection in live operation", "BLOCKED",
+            "Requires opted-in diagnostic logger and actual observed repeated failures; " +
+                "EVENT_SILENCE_CANDIDATE is only a contextual observation, not a proven outage")
         checks += Check("Real offer and alert delivery", "BLOCKED",
             "Requires a live offer and visible overlay/car-output observation; synthetic tests are insufficient")
         checks.forEach { InternalDiagnosticsLogger.logInteraction(context, "FEATURE_CHECK",
