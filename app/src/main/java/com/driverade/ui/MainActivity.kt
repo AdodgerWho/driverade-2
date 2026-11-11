@@ -1,6 +1,7 @@
 package com.driverade.ui
 
 import android.content.BroadcastReceiver
+import android.content.SharedPreferences
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -33,6 +34,7 @@ import com.driverade.service.OptimizedOfferEngine
 import com.driverade.service.ShiftTracker
 import com.driverade.service.SyntheticTestCatalog
 import com.driverade.service.TipLedger
+import com.driverade.service.UberMapEarnings
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -89,6 +91,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val earningsPreferences by lazy {
+        getSharedPreferences(UberMapEarnings.PREFERENCES_NAME, MODE_PRIVATE)
+    }
+    private val earningsChangeListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "total_cents" || key == "day") refreshTodayStats()
+    }
+
     private val shiftHandler = Handler(Looper.getMainLooper())
     private val shiftUpdateRunnable = object : Runnable {
         override fun run() {
@@ -120,6 +129,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        earningsPreferences.registerOnSharedPreferenceChangeListener(earningsChangeListener)
         if (!comparisonResultReceiverRegistered) {
             val filter = IntentFilter(OptimizedOfferEngine.ACTION_TEST_OFFER_RESULT)
             if (Build.VERSION.SDK_INT >= 33) {
@@ -138,6 +148,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        earningsPreferences.unregisterOnSharedPreferenceChangeListener(earningsChangeListener)
         if (comparisonResultReceiverRegistered) {
             unregisterReceiver(comparisonResultReceiver)
             comparisonResultReceiverRegistered = false
@@ -237,7 +248,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshTodayStats() {
-        val earnings = prefs.todayEarnings
+        // Prefer a verified current-day Uber map reading; keep manual totals as fallback.
+        val earnings = UberMapEarnings.totalToday(this) ?: prefs.todayEarnings
         val hours = prefs.todayActiveHours
         val rate = if (hours > 0.0) earnings / hours else 0.0
         binding.tvTodayEarnings?.text = String.format(Locale.US, "$%.2f", earnings)
@@ -250,7 +262,8 @@ class MainActivity : AppCompatActivity() {
     private fun showEditTodayStats() {
         val earnings = EditText(this).apply {
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-            setText(String.format(Locale.US, "%.2f", prefs.todayEarnings))
+            setText(String.format(Locale.US, "%.2f",
+                UberMapEarnings.totalToday(this@MainActivity) ?: prefs.todayEarnings))
             hint = "Today's earnings"
         }
         val hours = EditText(this).apply {
@@ -275,6 +288,8 @@ class MainActivity : AppCompatActivity() {
                 if (amount == null || time == null || !amount.isFinite() || !time.isFinite() || amount < 0 || time < 0) {
                     Toast.makeText(this, "Enter valid non-negative totals", Toast.LENGTH_SHORT).show()
                 } else {
+                    // Manual correction overrides the last observed map total until the next reading.
+                    UberMapEarnings.clearToday(this)
                     prefs.todayEarnings = amount
                     prefs.todayActiveHours = time
                     refreshTodayStats()
