@@ -223,6 +223,7 @@ class OptimizedOfferEngine : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         prefs = DriverPreferences(this)
+        lastUberEventElapsed = android.os.SystemClock.elapsedRealtime()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         guidance = GuideHighlighter(this)
         visualDebug = VisualDebugCapture(this)
@@ -473,6 +474,7 @@ class OptimizedOfferEngine : AccessibilityService() {
     )
 
     private var lastUberEventElapsed = 0L
+    private var lastSilenceDiagnosticElapsed = 0L
     private val restoredTick = object : Runnable {
         override fun run() {
             try {
@@ -486,6 +488,18 @@ class OptimizedOfferEngine : AccessibilityService() {
                             pkg to root
                         } else null
                     }.distinctBy { it.first }
+                    // Silence is a candidate observation, not a proven accessibility hang.
+                    // Only sample when an Uber-owned window is currently inspectable.
+                    val elapsed = android.os.SystemClock.elapsedRealtime()
+                    if (present.any { it.first == "com.ubercab.driver" } &&
+                        elapsed - lastUberEventElapsed > 60_000L &&
+                        elapsed - lastSilenceDiagnosticElapsed > 180_000L) {
+                        lastSilenceDiagnosticElapsed = elapsed
+                        InternalDiagnosticsLogger.logInteraction(this@OptimizedOfferEngine,
+                            "EVENT_SILENCE_CANDIDATE",
+                            "platform=UBER accessibleWindow=true noUberEventForMs=" +
+                                (elapsed - lastUberEventElapsed) + " classification=UNCONFIRMED")
+                    }
                     present.forEach { (pkg, _) ->
                         val platform = PACKAGE_PLATFORM_MAP[pkg] ?: return@forEach
                         if (prefs.isPlatformEnabled(platform)) {

@@ -58,6 +58,18 @@ object InternalDiagnosticsLogger {
             try {
                 val database = store ?: DiagnosticSqliteStore(appContext).also { store = it }
                 database.add(System.currentTimeMillis(), category, details.take(1000))
+                // Failure-tree indexing is opt-in and must never block the primary log.
+                try {
+                    val anomaly = FailureTreeDiagnostics.observe(appContext, category, details)
+                    if (anomaly != null) {
+                        database.add(System.currentTimeMillis(), "ANOMALY_REPETITION", anomaly)
+                        FileWriter(File(appContext.filesDir, FILENAME), true).use {
+                            it.append("[$time] [ANOMALY_REPETITION] $anomaly\n")
+                        }
+                    }
+                } catch (failure: Exception) {
+                    Log.e(TAG, "Failure-tree observer unavailable", failure)
+                }
                 FileWriter(File(appContext.filesDir, FILENAME), true).use { it.append(entry) }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to persist diagnostic interaction", e)
