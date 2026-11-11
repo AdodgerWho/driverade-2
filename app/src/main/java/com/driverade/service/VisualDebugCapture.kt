@@ -262,7 +262,15 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
         if (now - lastCaptureElapsed < intervalMs || !busy.compareAndSet(false, true)) return
         lastCaptureElapsed = now
         val saveDebug = isEnabled()
-        val chosen = if (pkg == "com.ubercab.driver" && Build.VERSION.SDK_INT >= 34) {
+        // Restore the legacy display-first OCR path when Uber owns the active screen.
+        // A window screenshot can select an offer-sized floating pill or unrelated
+        // 223px surface instead of the full Uber card. Keep per-window capture for
+        // background Uber events, where the foreground display belongs to another app.
+        val uberForeground = pkg == "com.ubercab.driver" &&
+            runCatching { service.rootInActiveWindow?.packageName?.toString() == pkg }
+                .getOrDefault(false)
+        val chosen = if (pkg == "com.ubercab.driver" && !uberForeground &&
+            Build.VERSION.SDK_INT >= 34) {
             val list = runCatching { service.windows.orEmpty() }.getOrDefault(emptyList())
             val owned = list.filter {
                 runCatching { it.root?.packageName?.toString() == pkg }.getOrDefault(false)
