@@ -1,21 +1,14 @@
-# Driverade Code Vault
+# Driverade
 
-An archival branch for known-good code snapshots, engineering decisions, recovery instructions, and build references. This branch is **not** the active development branch.
+Android/Kotlin gig-work offer monitoring and diagnostics. This repository contains stable, experimental, and historical project states; **the default branch is not automatically equivalent to the latest installed APK**.
 
-## Rules
-- Archive source from an identified commit, with its SHA, date, and test status.
-- Never label a snapshot **known good** until its build and device behavior have been verified.
-- Keep raw diagnostic logs, personal data, credentials, signing keys, and tokens out of the vault.
-- Do not merge archival documentation into `main` unless explicitly requested.
-- Prefer immutable Git tags and release assets for verified APKs; do not treat a branch as an off-site backup.
+- [Development checkpoint](PROJECT_RESUME.md) and [current consolidation manifest](docs/EXPERIMENTAL_CONSOLIDATION_20261110.md)
+- [Roadmap / architecture writeback protocol](docs/BRAINSTORMING_PROTOCOL.md)
+- [Engineering evidence standard](docs/ENGINEERING_EVIDENCE_STANDARD.md)
+- [Privacy and signing safeguards](AGENTS.md)
+- [Offer acquisition and restoration trial](RESTORED_LEGACY_TRIAL.md)
+- [Uber earnings observer trial](docs/UBER_MAP_EARNINGS_DASHBOARD_20261110.md)
 
-## Sections
-- `engine/` — offer detection, parsing, evaluation, filters
-- `alerter/` — notifications, overlays, and test behavior
-- `privacy/` — data minimization, ephemeral authentication, location transformations
-- `diagnostics/` — development logging and opt-in production reporting
-- `ui/` — activities, fragments, layouts, and navigation
-- `builds/` — commit-to-APK validation and restoration records
-- `snapshots/` — manifest of source snapshots and verification status
+Archival notes from the old code-vault branch remain under `alerter/`, `builds/`, `diagnostics/`, `engine/`, `privacy/`, `snapshots/`, and `ui/`. They are **reference notes**, not alternate runtime implementations or proof of verification.
 
-See `snapshots/INDEX.md` for the initial baseline. Source code is already retained in this branch's Git history from `main`; avoid duplicating unverified files as independent copies.
+This experimental integration does not itself authorize a release, PR closure, branch deletion, or an automatic update to the owner's phone.
