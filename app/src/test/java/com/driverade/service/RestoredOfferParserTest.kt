@@ -100,6 +100,15 @@ class RestoredOfferParserTest {
         assertEquals("reservation", result.offer?.kind)
     }
 
+    @Test fun uberTodayAtReservationClassificationIsPreserved() {
+        val result = RestoredOfferParser.fromTree("UBER", listOf(
+            "Comfort", "Today at 7:30 PM", "\$21.40", "Accept",
+            "4 min • 0.7 mi", "14 min • 3.3 mi"
+        ))
+        expected(result.offer, 21.40, 18.0, 4.0)
+        assertEquals("reservation", result.offer?.kind)
+    }
+
     @Test fun lyftScheduledOfferWithReserveActionIsAccepted() {
         val result = RestoredOfferParser.fromTree("LYFT", listOf(
             "Scheduled ride", "\$25.10",
