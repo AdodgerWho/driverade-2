@@ -61,6 +61,10 @@ internal object RestoredOfferParser {
     )
     private val uberAction = Regex("""\b(accept|match)\b""", RegexOption.IGNORE_CASE)
     private val lyftAction = Regex("""\b(accept|decline|request)\b""", RegexOption.IGNORE_CASE)
+    // In a reservation, "Reservation request" is a heading, not a clickable Request.
+    private val lyftReservationAction = Regex(
+        """(?im)^\s*(?:accept(?:\s+(?:ride|reservation))?|decline|request(?:\s+(?:ride|now))?)\s*$"""
+    )
     // Ride service labels help scope OCR, but an UberX label is never an offer requirement.
     // Longer variants come first so Comfort Electric stays one category.
     private val uberCardLabel = Regex(
@@ -107,7 +111,8 @@ internal object RestoredOfferParser {
                 }
             }
             "LYFT" -> {
-                val hasAction = lyftAction.containsMatchIn(text)
+                val hasAction = if (scheduled) lyftReservationAction.containsMatchIn(text)
+                    else lyftAction.containsMatchIn(text)
                 if (!hasAction && !(scheduled && hasReserveButton))
                     return Result(null, "missing_lyft_action")
                 if (scheduled) "reservation" else "live"
