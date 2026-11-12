@@ -1,6 +1,6 @@
 # Driverade repeatable APK updates
 
-Driverade keeps its application ID (`com.driverade`) unchanged. Android permits an in-place APK update only when the **installed APK and new APK have the same signing certificate** and the new `versionCode` is not lower. This setup uses a permanent personal keystore for deliberately requested builds.
+Driverade keeps its application ID (`com.driverade`) unchanged. Android permits an in-place APK update only when the **installed APK and new APK have the same signing certificate** and the new `versionCode` is not lower. This setup uses a permanent personal keystore for update builds.
 
 ## One-time signing setup
 
@@ -29,10 +29,13 @@ For macOS/BSD, use `base64 < driverade-updates.jks | tr -d '\n' > driverade-keys
 
 The workflow `.github/workflows/build.yml` supports two deliberately distinct modes:
 
-1. **Automatic pull-request and main push CI:** run unit tests and assemble a standard debug-signed test artifact named `Driverade-CI-DEBUG-NOT-FOR-UPDATES`. This does **not** use the personal keystore and should not be installed over a permanent-signed version.
-2. **Explicit manual update build:** in **Actions → Android CI Build v3.64 → Run workflow**, choose a trusted/reviewed branch and turn on **Sign a reviewed build with the permanent Driverade key**. This reads the four repository secrets only in the signed build step, verifies the keystore and alias, signs the debug APK via Gradle's existing `driveradeUpdates` config, verifies the APK certificate, and uploads `Driverade-PERMANENT-SIGNED-UPDATE`.
+1. **Automatic experimental branch push:** pushes to `experiment/restore-legacy-rolling-display-capture-20261110` run unit tests and produce a permanent-signed `Driverade-PERMANENT-SIGNED-UPDATE` artifact.
+2. **Automatic pull-request and main push CI:** assemble a debug-signed test artifact named `Driverade-CI-DEBUG-NOT-FOR-UPDATES`. This does **not** use the personal keystore and should not be installed over a permanent-signed version.
+3. **Explicit manual update build:** in **Actions → Android CI Build v3.64 → Run workflow**, choose a trusted branch and turn on **Sign a reviewed build with the permanent Driverade key**. Manual runs without that option produce a debug-signed artifact.
 
-If the signing secrets are missing or invalid, a requested permanent-signed build **fails** instead of silently emitting a debug-signed APK. The keystore is reconstructed only into the runner's temporary directory, deleted at the end of the signed-build step, and is never placed in Actions cache or uploaded as an artifact. Do not run unreviewed branch code with signing secrets.
+Signed builds read the four repository secrets in the signing step, verify the keystore and alias, sign via Gradle's `driveradeUpdates` config, and verify the APK certificate. If the secrets are missing or invalid, the build **fails** instead of silently emitting a debug-signed APK. The keystore is reconstructed only into the runner's temporary directory, deleted at the end of the signing step, and never cached or uploaded.
+
+**Owner decision, 2026-11-12:** Automatic signing was approved for pushes to the named experimental branch, including unreviewed commits, rather than main-only signing. Build scripts on that branch can access the permanent key, so anyone who can push there can potentially expose it. Restrict branch write access accordingly. This change applies only to this branch's workflow; other existing branches retain their own workflows and are not automatically covered. A signed APK or passing CI is not evidence of device verification or approval for promotion.
 
 The workflow sets `DRIVERADE_VERSION_CODE = 10000 + GITHUB_RUN_NUMBER`. Check that each subsequent installed build's code increases. The human-readable `versionName` may remain `3.64` while `versionCode` changes.
 

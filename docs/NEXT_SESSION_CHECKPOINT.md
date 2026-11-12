@@ -43,7 +43,7 @@ These items are not a statement that device behavior has been verified. Device A
 - Alerter includes nonblocking visual pulse/overlay with useful payout context and sound/vibration as applicable; ensure overlay doesn't steal touch input.
 - Driverade licensing goal: **one-time payment, feature-based tiers, no recurring subscription**.
 - Offline-first local behavior; network heatmaps or shared demand data are optional/availability-dependent. No user/device-specific data uploaded unless permitted through a privacy-preserving, opt-in scheme.
-- Preserve signed update continuity and settings; PR builds/debug certificates are different from owner-signed update artifacts. Automatic CI success ≠ owner-signed APK.
+- Preserve signed update continuity and settings; PR builds/debug certificates are different from owner-signed update artifacts. On 2026-11-12 the owner approved automatic permanent signing for pushes to `experiment/restore-legacy-rolling-display-capture-20261110` only; see [UPDATE_SIGNING.md](../UPDATE_SIGNING.md) for scope and key-exposure risks. CI success does not establish device behavior.
 - App enhancement ideas, deferred features and reusable toolkit concepts are preserved in [FEATURE_IDEAS_BACKLOG.md](FEATURE_IDEAS_BACKLOG.md).
 
 ## What is NOT proven

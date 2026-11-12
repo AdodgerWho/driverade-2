@@ -32,6 +32,36 @@ class OptimizedOfferEngine : AccessibilityService() {
     private var guidance: GuideHighlighter? = null
     private var visualDebug: VisualDebugCapture? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val acquisitionGates = mutableMapOf<String, LeadingEdgeCaptureGate>()
+    private val pendingAcquisitions = mutableMapOf<String, Runnable>()
+
+    private fun acquisitionPending(platform: String): Boolean =
+        acquisitionGates[platform]?.pending == true
+
+    /** Read fresh screen contents 200ms after the first eligible platform event. */
+    private fun scheduleSettledAcquisition(platform: String, pkg: String, captureId: String) {
+        val started = android.os.SystemClock.elapsedRealtime()
+        val gate = acquisitionGates.getOrPut(platform) { LeadingEdgeCaptureGate(200L) }
+        if (!gate.start(started)) return
+        InternalDiagnosticsLogger.logInteraction(this, "ACQUISITION_SETTLE_SCHEDULED",
+            "capture=$captureId platform=$platform settleMs=200")
+        val task = object : Runnable {
+            override fun run() {
+                pendingAcquisitions.remove(platform)
+                val actualDelay = gate.finish(android.os.SystemClock.elapsedRealtime())
+                    ?: return
+                if (!::prefs.isInitialized || !prefs.isPlatformEnabled(platform)) return
+                InternalDiagnosticsLogger.logInteraction(this@OptimizedOfferEngine,
+                    "ACQUISITION_SETTLE_STARTED",
+                    "capture=$captureId platform=$platform elapsedMs=$actualDelay")
+                // Never reuse a possibly incomplete event.source snapshot.
+                processRestoredTrees(platform, pkg, captureId, null, -1, "SETTLED_EVENT")
+                visualDebug?.observeSettledPlatform(pkg, captureId)
+            }
+        }
+        pendingAcquisitions[platform] = task
+        mainHandler.postDelayed(task, gate.delayMs)
+    }
     private val testPillReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == ACTION_CLEAR_VISUAL_BUFFER) {
@@ -253,7 +283,7 @@ class OptimizedOfferEngine : AccessibilityService() {
         if (event == null) return
         val pkgName = event.packageName?.toString() ?: "unknown.package"
         val captureId = "${System.currentTimeMillis()}-${++diagnosticCaptureSequence}"
-        visualDebug?.observe(event, pkgName, captureId)
+        // Platform acquisitions are delayed together below. Guides still use live events.
         if (GuidedSettingsState.isActive(this) && (pkgName == "com.android.settings" || pkgName == "com.google.android.projection.gearhead")) {
             val guide = GuidedSettingsState.guide(this)
             val step = GuidedSettingsState.step(this)
@@ -296,8 +326,11 @@ class OptimizedOfferEngine : AccessibilityService() {
 
         InternalDiagnosticsLogger.logInteraction(this, "PLATFORM_MATCH", "capture=$captureId platform=$platform eventType=${event.eventType} eventTime=${event.eventTime} windowId=${event.windowId} class=${event.className}")
         if (platform == "UBER") lastUberEventElapsed = android.os.SystemClock.elapsedRealtime()
-
-        processRestoredTrees(platform, pkgName, captureId, event.source, event.windowId)
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
+            scheduleSettledAcquisition(platform, pkgName, captureId)
+        }
     }
 
     /** Trace all state changes, but limit identical timer/event repetitions to 15s. */
@@ -504,7 +537,8 @@ class OptimizedOfferEngine : AccessibilityService() {
                         val platform = PACKAGE_PLATFORM_MAP[pkg] ?: return@forEach
                         if (prefs.isPlatformEnabled(platform)) {
                             val id = "timed-" + System.currentTimeMillis()
-                            processRestoredTrees(platform, pkg, id, null, -1, "TIMED")
+                            if (!acquisitionPending(platform))
+                                processRestoredTrees(platform, pkg, id, null, -1, "TIMED")
                         }
                     }
                     val recentlyTriggered =
@@ -515,7 +549,7 @@ class OptimizedOfferEngine : AccessibilityService() {
                             isLegacyBlankOfferWindow(root)
                     }
                     if ((recentlyTriggered || unreadableUberOverlay) &&
-                        prefs.isPlatformEnabled("UBER")) {
+                        prefs.isPlatformEnabled("UBER") && !acquisitionPending("UBER")) {
                         val ocrCaptureId = "timed-" + System.currentTimeMillis()
                         if (shouldTraceRestored("TIMED_OCR_TRIGGER", 
                                 (if (recentlyTriggered) 1 else 0) +
@@ -779,6 +813,10 @@ class OptimizedOfferEngine : AccessibilityService() {
         guidance?.clear()
         dismissOverlay()
         mainHandler.removeCallbacks(restoredTick)
+        pendingAcquisitions.values.forEach { mainHandler.removeCallbacks(it) }
+        pendingAcquisitions.clear()
+        acquisitionGates.values.forEach { it.cancel() }
+        acquisitionGates.clear()
         visualDebug?.close()
         InternalDiagnosticsLogger.logInteraction(this, "SERVICE", "OptimizedOfferEngine destroyed.")
         super.onDestroy()
