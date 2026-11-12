@@ -60,6 +60,14 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
         capture(pkg, captureId, "EVENT", event.windowId)
     }
 
+    /** Invoke only after the shared acquisition settle deadline; no stale event node used. */
+    fun observeSettledPlatform(pkg: String, captureId: String) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        if (pkg != "com.ubercab.driver" && !isEnabled()) return
+        if (!OptimizedOfferEngine.PACKAGE_PLATFORM_MAP.containsKey(pkg)) return
+        capture(pkg, captureId, "SETTLED_EVENT", -1)
+    }
+
     /** Periodic recovery from missed / too-early Uber accessibility events. */
     fun observeTimedUber(captureId: String) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
