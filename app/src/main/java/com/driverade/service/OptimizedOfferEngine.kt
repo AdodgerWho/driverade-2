@@ -32,22 +32,23 @@ class OptimizedOfferEngine : AccessibilityService() {
     private var guidance: GuideHighlighter? = null
     private var visualDebug: VisualDebugCapture? = null
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val acquisitionGate = LeadingEdgeCaptureGate(200L)
-    private var pendingAcquisition: Runnable? = null
-    private var pendingPlatform: String? = null
+    private val acquisitionGates = mutableMapOf<String, LeadingEdgeCaptureGate>()
+    private val pendingAcquisitions = mutableMapOf<String, Runnable>()
+
+    private fun acquisitionPending(platform: String): Boolean =
+        acquisitionGates[platform]?.pending == true
 
     /** Read fresh screen contents 200ms after the first eligible platform event. */
     private fun scheduleSettledAcquisition(platform: String, pkg: String, captureId: String) {
         val started = android.os.SystemClock.elapsedRealtime()
-        if (!acquisitionGate.start(started)) return
-        pendingPlatform = platform
+        val gate = acquisitionGates.getOrPut(platform) { LeadingEdgeCaptureGate(200L) }
+        if (!gate.start(started)) return
         InternalDiagnosticsLogger.logInteraction(this, "ACQUISITION_SETTLE_SCHEDULED",
             "capture=$captureId platform=$platform settleMs=200")
         val task = object : Runnable {
             override fun run() {
-                pendingAcquisition = null
-                pendingPlatform = null
-                val actualDelay = acquisitionGate.finish(android.os.SystemClock.elapsedRealtime())
+                pendingAcquisitions.remove(platform)
+                val actualDelay = gate.finish(android.os.SystemClock.elapsedRealtime())
                     ?: return
                 if (!::prefs.isInitialized || !prefs.isPlatformEnabled(platform)) return
                 InternalDiagnosticsLogger.logInteraction(this@OptimizedOfferEngine,
@@ -58,8 +59,8 @@ class OptimizedOfferEngine : AccessibilityService() {
                 visualDebug?.observeSettledPlatform(pkg, captureId)
             }
         }
-        pendingAcquisition = task
-        mainHandler.postDelayed(task, acquisitionGate.delayMs)
+        pendingAcquisitions[platform] = task
+        mainHandler.postDelayed(task, gate.delayMs)
     }
     private val testPillReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -536,7 +537,7 @@ class OptimizedOfferEngine : AccessibilityService() {
                         val platform = PACKAGE_PLATFORM_MAP[pkg] ?: return@forEach
                         if (prefs.isPlatformEnabled(platform)) {
                             val id = "timed-" + System.currentTimeMillis()
-                            if (pendingPlatform != platform)
+                            if (!acquisitionPending(platform))
                                 processRestoredTrees(platform, pkg, id, null, -1, "TIMED")
                         }
                     }
@@ -548,7 +549,7 @@ class OptimizedOfferEngine : AccessibilityService() {
                             isLegacyBlankOfferWindow(root)
                     }
                     if ((recentlyTriggered || unreadableUberOverlay) &&
-                        prefs.isPlatformEnabled("UBER") && pendingPlatform != "UBER") {
+                        prefs.isPlatformEnabled("UBER") && !acquisitionPending("UBER")) {
                         val ocrCaptureId = "timed-" + System.currentTimeMillis()
                         if (shouldTraceRestored("TIMED_OCR_TRIGGER", 
                                 (if (recentlyTriggered) 1 else 0) +
@@ -812,10 +813,10 @@ class OptimizedOfferEngine : AccessibilityService() {
         guidance?.clear()
         dismissOverlay()
         mainHandler.removeCallbacks(restoredTick)
-        pendingAcquisition?.let { mainHandler.removeCallbacks(it) }
-        pendingAcquisition = null
-        pendingPlatform = null
-        acquisitionGate.cancel()
+        pendingAcquisitions.values.forEach { mainHandler.removeCallbacks(it) }
+        pendingAcquisitions.clear()
+        acquisitionGates.values.forEach { it.cancel() }
+        acquisitionGates.clear()
         visualDebug?.close()
         InternalDiagnosticsLogger.logInteraction(this, "SERVICE", "OptimizedOfferEngine destroyed.")
         super.onDestroy()
