@@ -14,6 +14,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -29,6 +30,8 @@ class OptimizedOfferEngine : AccessibilityService() {
     private lateinit var prefs: DriverPreferences
     private var windowManager: WindowManager? = null
     private var activeOverlayView: LinearLayout? = null
+    private var activeOverlayCaptureId: String? = null
+    private val overlayRequestGate = OverlayRequestGate()
     private var guidance: GuideHighlighter? = null
     private var visualDebug: VisualDebugCapture? = null
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -130,7 +133,7 @@ class OptimizedOfferEngine : AccessibilityService() {
                 meetsTarget = true,
                 rawNodes = emptyList()
             )
-            showHourlyRateOverlay(sample)
+            showHourlyRateOverlay(sample, "synthetic-alert-pill")
             InternalDiagnosticsLogger.logInteraction(this@OptimizedOfferEngine, "PILL_TEST", "Sample overlay requested locally")
         }
     }
@@ -484,7 +487,7 @@ class OptimizedOfferEngine : AccessibilityService() {
             InternalDiagnosticsLogger.logInteraction(this, "ALERT_DISPATCH",
                 "capture=" + captureId + " source=" + candidate.source)
             broadcastToAndroidAuto(evaluation)
-            showHourlyRateOverlay(evaluation)
+            showHourlyRateOverlay(evaluation, captureId)
         } else {
             InternalDiagnosticsLogger.logInteraction(this, "ALERT_DISABLED",
                 "capture=" + captureId + " live offer evaluated, alerter disabled")
@@ -698,14 +701,24 @@ class OptimizedOfferEngine : AccessibilityService() {
             evaluationOf(it, packageName)
         }
 
-    private fun showHourlyRateOverlay(evaluation: OfferEvaluation) {
+    private fun showHourlyRateOverlay(evaluation: OfferEvaluation, captureId: String) {
+        val requestId = overlayRequestGate.begin()
+        InternalDiagnosticsLogger.logInteraction(this, "OVERLAY_REQUEST",
+            "capture=" + captureId + " platform=" + evaluation.platform +
+                " requestId=" + requestId)
         if (!Settings.canDrawOverlays(this)) {
-            InternalDiagnosticsLogger.logInteraction(this, "OVERLAY_FAIL", "SYSTEM_ALERT_WINDOW permission not granted.")
+            InternalDiagnosticsLogger.logInteraction(this, "OVERLAY_FAIL",
+                "capture=" + captureId + " reason=OVERLAY_PERMISSION_DENIED")
             return
         }
 
         mainHandler.post {
-            dismissOverlay()
+            if (!overlayRequestGate.isCurrent(requestId)) {
+                InternalDiagnosticsLogger.logInteraction(this, "OVERLAY_SUPERSEDED",
+                    "capture=" + captureId + " requestId=" + requestId)
+                return@post
+            }
+            dismissOverlay("REPLACED")
 
             val container = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -744,7 +757,21 @@ class OptimizedOfferEngine : AccessibilityService() {
 
             container.addView(titleView)
             container.addView(detailView)
-            container.setOnClickListener { dismissOverlay() }
+            container.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(v: View) {
+                    InternalDiagnosticsLogger.logInteraction(this@OptimizedOfferEngine,
+                        "OVERLAY_ATTACHED", "capture=" + captureId +
+                            " requestId=" + requestId)
+                }
+                override fun onViewDetachedFromWindow(v: View) {
+                    InternalDiagnosticsLogger.logInteraction(this@OptimizedOfferEngine,
+                        "OVERLAY_DETACHED", "capture=" + captureId +
+                            " requestId=" + requestId)
+                }
+            })
+            container.setOnClickListener {
+                if (activeOverlayView === container) dismissOverlay("TAP")
+            }
 
             val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -767,23 +794,46 @@ class OptimizedOfferEngine : AccessibilityService() {
             }
 
             try {
-                windowManager?.addView(container, params)
+                val wm = windowManager ?: throw IllegalStateException("WindowManager unavailable")
+                wm.addView(container, params)
                 activeOverlayView = container
-                InternalDiagnosticsLogger.logInteraction(this, "OVERLAY_SHOWN", "Rendered banner for ${evaluation.platform}")
-                mainHandler.postDelayed({ dismissOverlay() }, OVERLAY_DURATION_MS)
+                activeOverlayCaptureId = captureId
+                InternalDiagnosticsLogger.logInteraction(this, "OVERLAY_SHOWN",
+                    "capture=" + captureId + " platform=" + evaluation.platform +
+                        " requestId=" + requestId + " stage=addView_returned")
+                mainHandler.post {
+                    if (activeOverlayView === container) {
+                        InternalDiagnosticsLogger.logInteraction(this, "OVERLAY_WINDOW_STATE",
+                            "capture=" + captureId + " requestId=" + requestId +
+                                " attached=" + container.isAttachedToWindow +
+                                " shown=" + container.isShown)
+                    }
+                }
+                mainHandler.postDelayed({
+                    // A prior offer's timeout cannot dismiss the replacement overlay.
+                    if (overlayRequestGate.isCurrent(requestId) && activeOverlayView === container)
+                        dismissOverlay("TIMEOUT")
+                }, OVERLAY_DURATION_MS)
             } catch (e: Exception) {
-                InternalDiagnosticsLogger.logInteraction(this, "OVERLAY_ERROR", "Failed to render overlay: ${e.message}")
+                InternalDiagnosticsLogger.logInteraction(this, "OVERLAY_ERROR",
+                    "capture=" + captureId + " reason=" + e.javaClass.simpleName)
             }
         }
     }
 
-    private fun dismissOverlay() {
+    private fun dismissOverlay(reason: String = "EXTERNAL") {
         activeOverlayView?.let { view ->
+            val captureId = activeOverlayCaptureId ?: "UNKNOWN"
+            activeOverlayView = null
+            activeOverlayCaptureId = null
             try {
                 windowManager?.removeView(view)
-            } catch (_: Exception) {
+                InternalDiagnosticsLogger.logInteraction(this, "OVERLAY_DISMISSED",
+                    "capture=" + captureId + " reason=" + reason)
+            } catch (e: Exception) {
+                InternalDiagnosticsLogger.logInteraction(this, "OVERLAY_DISMISS_ERROR",
+                    "capture=" + captureId + " reason=" + e.javaClass.simpleName)
             }
-            activeOverlayView = null
         }
     }
 
@@ -800,18 +850,20 @@ class OptimizedOfferEngine : AccessibilityService() {
     }
 
     override fun onInterrupt() {
+        overlayRequestGate.invalidate()
         guidance?.clear()
-        dismissOverlay()
+        dismissOverlay("SERVICE_INTERRUPTED")
         InternalDiagnosticsLogger.logInteraction(this, "SERVICE", "OptimizedOfferEngine interrupted.")
     }
 
     override fun onDestroy() {
+        overlayRequestGate.invalidate()
         if (testReceiverRegistered) {
             unregisterReceiver(testPillReceiver)
             testReceiverRegistered = false
         }
         guidance?.clear()
-        dismissOverlay()
+        dismissOverlay("SERVICE_DESTROYED")
         mainHandler.removeCallbacks(restoredTick)
         pendingAcquisitions.values.forEach { mainHandler.removeCallbacks(it) }
         pendingAcquisitions.clear()

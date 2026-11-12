@@ -91,6 +91,67 @@ class RestoredOfferParserTest {
         assertEquals("ocr_no_service_context", RestoredOfferParser.fromUberOcr(raw, "DISPLAY").reason)
     }
 
+    @Test fun uberReservationOfferWithReserveActionIsAccepted() {
+        val result = RestoredOfferParser.fromTree("UBER", listOf(
+            "Reservation request", "Comfort Electric", "\$23.40",
+            "Pickup at 6:30 PM", "4 min • 1.2 mi", "18 min • 5.2 mi", "Reserve"
+        ))
+        expected(result.offer, 23.40, 22.0, 6.4)
+        assertEquals("reservation", result.offer?.kind)
+    }
+
+    @Test fun uberTodayAtReservationClassificationIsPreserved() {
+        val result = RestoredOfferParser.fromTree("UBER", listOf(
+            "Comfort", "Today at 7:30 PM", "\$21.40", "Accept",
+            "4 min • 0.7 mi", "14 min • 3.3 mi"
+        ))
+        expected(result.offer, 21.40, 18.0, 4.0)
+        assertEquals("reservation", result.offer?.kind)
+    }
+
+    @Test fun lyftScheduledOfferWithReserveActionIsAccepted() {
+        val result = RestoredOfferParser.fromTree("LYFT", listOf(
+            "Scheduled ride", "\$25.10",
+            "3 min • 0.8 mi", "20 min • 7.5 mi", "Reserve"
+        ))
+        expected(result.offer, 25.10, 23.0, 8.3)
+        assertEquals("reservation", result.offer?.kind)
+    }
+
+    @Test fun lyftReservationWithRequestActionUsesExistingOfferPath() {
+        val result = RestoredOfferParser.fromTree("LYFT", listOf(
+            "Reservation request", "Request", "\$22.00",
+            "2 min • 0.5 mi", "18 min • 5.0 mi"
+        ))
+        expected(result.offer, 22.00, 20.0, 5.5)
+        assertEquals("reservation", result.offer?.kind)
+    }
+
+    @Test fun reservationListingAndNonActionPreviewsCannotBecomeOffers() {
+        val upcoming = RestoredOfferParser.fromTree("LYFT", listOf(
+            "My reservations", "Reserve", "\$27.30",
+            "5 min • 1.0 mi", "19 min • 5.1 mi"
+        ))
+        assertEquals("history_or_navigation", upcoming.reason)
+        val preview = RestoredOfferParser.fromTree("UBER", listOf(
+            "Reservation request", "Comfort Electric", "\$15.40",
+            "4 min • 0.8 mi", "20 min • 4.2 mi", "View trip", "Dismiss"
+        ))
+        assertEquals("missing_uber_action", preview.reason)
+        val serviceOnly = RestoredOfferParser.fromTree("UBER", listOf(
+            "Uber Reserve", "\$25.20", "3 min • 0.8 mi", "15 min • 4.0 mi"
+        ))
+        assertEquals("missing_uber_action", serviceOnly.reason)
+        val headingOnly = RestoredOfferParser.fromTree("LYFT", listOf(
+            "Reservation request", "\$22.00", "2 min • 0.5 mi", "18 min • 5.0 mi"
+        ))
+        assertEquals("missing_lyft_action", headingOnly.reason)
+        val missingLeg = RestoredOfferParser.fromTree("LYFT", listOf(
+            "Scheduled ride", "Reserve", "\$21.00", "16 min • 5 mi"
+        ))
+        assertEquals("requires_two_pickup_and_trip_legs", missingLeg.reason)
+    }
+
     @Test fun reservationPreviewAndMapPillDoNotBecomeOffers() {
         val preview = "Reservation request\nComfort Electric\n\$15.40\nPickup Fri at 6:30pm\nView trip\nDismiss"
         assertNull(RestoredOfferParser.fromUberOcr(preview, "WINDOW").offer)
