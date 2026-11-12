@@ -97,7 +97,9 @@ internal object RestoredOfferParser {
         val text = raw.trim()
         val lower = text.lowercase(Locale.US)
         if (history.any { it in lower }) return Result(null, "history_or_navigation")
-        val scheduled = reservationContext.containsMatchIn(text)
+        val scheduled = reservationContext.containsMatchIn(text) ||
+            (platform.startsWith("UBER") &&
+                Regex("""\btoday\s+at\s+\d{1,2}""", RegexOption.IGNORE_CASE).containsMatchIn(text))
         val hasReserveButton = reserveButton.containsMatchIn(text)
         val kind = when (platform) {
             "UBER", "UBER_EATS" -> {
