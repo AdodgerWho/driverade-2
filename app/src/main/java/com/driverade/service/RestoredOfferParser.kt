@@ -47,7 +47,20 @@ internal object RestoredOfferParser {
     )
     private val history = listOf("your earnings", "earnings activity", "net fare",
         "total earnings", "your balance", "cash out", "ride history", "daily stats",
-        "trip in progress", "start navigation", "picking up", "waiting for rider")
+        "trip in progress", "start navigation", "picking up", "waiting for rider",
+        "my reservations", "your reservations", "reservation details", "upcoming reservations",
+        "cancel reservation", "edit reservation", "view reservation")
+    // A scheduled offer must have both reservation context AND an actionable control.
+    // A service label (e.g. "Uber Reserve") is context, not an action button.
+    private val reservationContext = Regex(
+        """\b(?:reservation|scheduled|advance booking|reserve ride|uber reserve)\b""",
+        RegexOption.IGNORE_CASE
+    )
+    private val reserveButton = Regex(
+        """(?im)^\s*(?:reserve(?:\s+(?:ride|now))?|book(?:\s+now)?)\s*$"""
+    )
+    private val uberAction = Regex("""\b(accept|match)\b""", RegexOption.IGNORE_CASE)
+    private val lyftAction = Regex("""\b(accept|decline|request)\b""", RegexOption.IGNORE_CASE)
     // Ride service labels help scope OCR, but an UberX label is never an offer requirement.
     // Longer variants come first so Comfort Electric stays one category.
     private val uberCardLabel = Regex(
@@ -80,20 +93,24 @@ internal object RestoredOfferParser {
         val text = raw.trim()
         val lower = text.lowercase(Locale.US)
         if (history.any { it in lower }) return Result(null, "history_or_navigation")
+        val scheduled = reservationContext.containsMatchIn(text)
+        val hasReserveButton = reserveButton.containsMatchIn(text)
         val kind = when (platform) {
             "UBER", "UBER_EATS" -> {
-                if (!Regex("""\b(accept|match)\b""", RegexOption.IGNORE_CASE).containsMatchIn(text))
+                val hasAction = uberAction.containsMatchIn(text)
+                if (!hasAction && !(scheduled && hasReserveButton))
                     return Result(null, "missing_uber_action")
                 when {
+                    scheduled -> "reservation"
                     Regex("""\bmatch\b""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "match"
-                    Regex("""\breservation\b|today\s+at\s+\d{1,2}""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "reservation"
                     else -> "live"
                 }
             }
             "LYFT" -> {
-                if (!Regex("""\b(accept|decline|request)\b""", RegexOption.IGNORE_CASE).containsMatchIn(text))
+                val hasAction = lyftAction.containsMatchIn(text)
+                if (!hasAction && !(scheduled && hasReserveButton))
                     return Result(null, "missing_lyft_action")
-                "live"
+                if (scheduled) "reservation" else "live"
             }
             "HICH" -> {
                 if (!Regex("""\baccept\b""", RegexOption.IGNORE_CASE).containsMatchIn(text))
