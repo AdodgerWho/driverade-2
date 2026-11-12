@@ -133,6 +133,10 @@ class RestoredOfferParserTest {
             "Uber Reserve", "\$25.20", "3 min • 0.8 mi", "15 min • 4.0 mi"
         ))
         assertEquals("missing_uber_action", serviceOnly.reason)
+        val headingOnly = RestoredOfferParser.fromTree("LYFT", listOf(
+            "Reservation request", "\$22.00", "2 min • 0.5 mi", "18 min • 5.0 mi"
+        ))
+        assertEquals("missing_lyft_action", headingOnly.reason)
         val missingLeg = RestoredOfferParser.fromTree("LYFT", listOf(
             "Scheduled ride", "Reserve", "\$21.00", "16 min • 5 mi"
         ))
