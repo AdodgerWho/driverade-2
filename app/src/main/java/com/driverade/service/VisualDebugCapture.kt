@@ -360,7 +360,8 @@ internal class VisualDebugCapture(private val service: AccessibilityService) {
             if (chosen != null) {
                 service.takeScreenshotOfWindow(chosen.id, captureExecutor, callback("WINDOW"))
             } else {
-                service.takeScreenshot(Display.DEFAULT_DISPLAY, captureExecutor, callback("DISPLAY"))
+                service.takeScreenshot(Display.DEFAULT_DISPLAY, captureExecutor,
+                    callback(if (uberForeground) "DISPLAY_UBER_FOREGROUND" else "DISPLAY"))
             }
         } catch (error: Exception) {
             log("REQUEST_FAILED", "capture=" + captureId +
