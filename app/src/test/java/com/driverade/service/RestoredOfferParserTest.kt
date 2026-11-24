@@ -166,6 +166,43 @@ class RestoredOfferParserTest {
         assertEquals("ambiguous_or_missing_payout", r.reason)
     }
 
+    @Test fun displayOcrRecognizesSeparatorVariationInUberServiceLine() {
+        val text = "Uber X : Exclusive\n$8.07\n5 min • 1.1 mi\n11 min • 6.4 mi\nAccept"
+        val result = RestoredOfferParser.fromUberOcr(text, "DISPLAY")
+        expected(result.offer, 8.07, 16.0, 7.5)
+    }
+
+    @Test fun verifiedUberForegroundCanRecoverMissingServiceLabelWithOfferCue() {
+        val text = "Exclusive\n$6.44\n3 min • 0.6 mi\n7 min • 2.2 mi\nAccept"
+        val recovered = RestoredOfferParser.fromUberOcr(text, "DISPLAY_UBER_FOREGROUND")
+        expected(recovered.offer, 6.44, 10.0, 2.8)
+        assertEquals("ocr_no_service_context",
+            RestoredOfferParser.fromUberOcr(text, "DISPLAY").reason)
+    }
+
+    @Test fun missingLabelStillRequiresDistinctRequestCueAndCompleteFields() {
+        val noCue = "Account summary\n$6.44\n3 min • 0.6 mi\n7 min • 2.2 mi\nAccept"
+        val noLeg = "Exclusive\n$6.44\n3 min • 0.6 mi\nAccept"
+        assertEquals("ocr_no_service_context",
+            RestoredOfferParser.fromUberOcr(noCue, "DISPLAY_UBER_FOREGROUND").reason)
+        assertEquals("requires_two_pickup_and_trip_legs",
+            RestoredOfferParser.fromUberOcr(noLeg, "DISPLAY_UBER_FOREGROUND").reason)
+        assertEquals("history_or_navigation",
+            RestoredOfferParser.fromUberOcr(
+                "Earnings activity\nExclusive\n$6.44\n3 min • 0.6 mi\n7 min • 2.2 mi\nAccept",
+                "DISPLAY_UBER_FOREGROUND").reason)
+    }
+
+    @Test fun rejectedOcrDiagnosticShowsOnlyFieldPresenceAndProvenance() {
+        val text = "Exclusive\n$6.44\nPRIVATE RIDER ADDRESS\n3 min • 0.6 mi"
+        val outcome = RestoredOfferParser.fromUberOcr(text, "DISPLAY_UBER_FOREGROUND")
+        assertEquals("missing_uber_action", outcome.reason)
+        assertTrue(outcome.diagnostic().contains("actionFound=false"))
+        assertTrue(outcome.diagnostic().contains("legPairs=1"))
+        assertTrue(!outcome.diagnostic().contains("PRIVATE RIDER"))
+        assertTrue(outcome.diagnostic().contains("rawText=OMITTED"))
+    }
+
     @Test fun outputsDoNotIncludeRawScreenText() {
         val r = RestoredOfferParser.fromUberOcr(
             "UberX\n$6.74\n6 min • 2.4 mi\nVery Private Rider Address\n7 min • 2.3 mi\nMatch")

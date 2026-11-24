@@ -2,7 +2,11 @@ name: Android CI Build v3.64
 
 on:
   push:
-    branches: [ "main", "experiment/restore-legacy-rolling-display-capture-20261110" ]
+    branches:
+      - main
+      - 'experiment/**'
+      - 'integration/**'
+      - 'fix/**'
   pull_request:
   workflow_dispatch:
     inputs:
@@ -10,7 +14,7 @@ on:
         description: 'Sign a reviewed build with the permanent Driverade key'
         required: true
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: read
@@ -19,7 +23,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      PERMANENT_SIGNING_REQUESTED: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/experiment/restore-legacy-rolling-display-capture-20261110') || (github.event_name == 'workflow_dispatch' && inputs.sign_for_updates) }}
+      PERMANENT_SIGNING_REQUESTED: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.sign_for_updates) }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
@@ -41,12 +45,12 @@ jobs:
       - name: Run parser comparison unit tests
         run: gradle testDebugUnitTest
 
-      # PRs and other non-signing runs use a distinctly labeled test artifact.
+      # Pull requests remain debug-only; pushes on selected development branches sign automatically.
       - name: Build CI test APK (debug signing only)
         if: env.PERMANENT_SIGNING_REQUESTED != 'true'
         run: gradle assembleDebug
 
-      # The owner approved signing pushes to the named experimental branch.
+      # The owner approved signing pushes to maintained development branches.
       # Never restore signing keys from a cache or expose them to PR builds.
       - name: Build APK with permanent signing key
         if: env.PERMANENT_SIGNING_REQUESTED == 'true'
