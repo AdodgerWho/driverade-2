@@ -20,9 +20,9 @@ internal object RestoredOfferParser {
         val hourlyRate get() = payout * 60.0 / totalMinutes
         val dollarsPerMile get() = payout / totalMiles
     }
-    data class Result(val offer: Candidate?, val reason: String) {
+    data class Result(val offer: Candidate?, val reason: String, val fieldEvidence: String = "") {
         fun diagnostic(): String {
-            val o = offer ?: return "decision=REJECT reason=" + reason + " rawText=OMITTED"
+            val o = offer ?: return "decision=REJECT reason=" + reason + " " + fieldEvidence + " rawText=OMITTED"
             return "decision=ACCEPT source=" + o.source + " kind=" + o.kind +
                 " serviceType=" + (o.serviceType ?: "UNKNOWN") +
                 " payout=" + o.payout + " pickupMin=" + o.pickupMinutes +
@@ -58,6 +58,16 @@ internal object RestoredOfferParser {
             ?.trim()?.replace(Regex("""^\d[ \t]+"""), "")
             ?.replace(Regex("""\s+"""), "_")?.uppercase(Locale.US)
 
+    // Keep matching bounded to an isolated line while tolerating OCR separators.
+    private val ocrVariantLabel = Regex(
+        """(?im)^[ \t]*(?:\d[ \t]+)?(?:Uber[ \t]*[Xx][ \t]*L?|Uber[ \t]+Comfort(?:[ \t]+Electric)?|Comfort(?:[ \t]+Electric)?|Electric|Uber[ \t]+(?:Black|Green|Pet|Share|Reserve|Premier|WAV|Assist))(?:[ \t]*[•·:|\-][ \t]*|[ \t]+)?(?:Exclusive|Match)?[ \t]*$"""
+    )
+    private val offerAction = Regex("""\b(?:accept|match)\b""", RegexOption.IGNORE_CASE)
+    private val requestContext = Regex(
+        """\b(?:exclusive|trip[ \t]+request|ride[ \t]+request)\b""",
+        RegexOption.IGNORE_CASE
+    )
+
     /** Call only with one verified application-owned window at a time. */
     fun fromTree(platform: String, texts: List<String>, verifiedPayout: Double? = null): Result =
         parse(platform, texts.joinToString("\n"), Source.TREE, verifiedPayout)
@@ -68,12 +78,25 @@ internal object RestoredOfferParser {
      */
     fun fromUberOcr(text: String, captureSource: String = "DISPLAY"): Result {
         val match = uberCardLabel.findAll(text).lastOrNull()
-        if (match == null && captureSource != "WINDOW")
-            return Result(null, "ocr_no_service_context")
-        val section = if (captureSource == "WINDOW") text.takeLast(1700)
-            else if (match != null) text.substring(match.range.first).take(1700)
-            else text.takeLast(1700)
-        return parse("UBER", section, Source.OCR, null)
+            ?: ocrVariantLabel.findAll(text).lastOrNull()
+        val trustedWindow = captureSource == "WINDOW"
+        // Provenance comes from accessibility at capture time, not the OCR text.
+        val verifiedUberForeground = captureSource == "DISPLAY_UBER_FOREGROUND"
+        val moneyCount = money.findAll(text).take(4).count()
+        val legCount = leg.findAll(text).take(3).count()
+        val fieldEvidence = "labelFound=${match != null} actionFound=${offerAction.containsMatchIn(text)}" +
+            " payoutTokens=${moneyCount.coerceAtMost(3)} legPairs=${legCount.coerceAtMost(3)}" +
+            " trustedUberWindow=$trustedWindow verifiedUberForeground=$verifiedUberForeground"
+        if (match == null && !trustedWindow && !verifiedUberForeground)
+            return Result(null, "ocr_no_service_context", fieldEvidence)
+        // No recognized label is acceptable only for an explicitly verified Uber
+        // foreground display with a distinct offer cue; all existing value,
+        // action, two-leg and history checks still apply.
+        if (match == null && verifiedUberForeground && !requestContext.containsMatchIn(text))
+            return Result(null, "ocr_no_service_context", fieldEvidence)
+        val section = if (trustedWindow || match == null) text.takeLast(1700)
+            else text.substring(match.range.first).take(1700)
+        return parse("UBER", section, Source.OCR, null).copy(fieldEvidence = fieldEvidence)
     }
 
     private fun parse(platform: String, raw: String, source: Source, verifiedPayout: Double?): Result {
